@@ -29,12 +29,15 @@
 #ifndef _RDKAFKA_INT_H_
 #define _RDKAFKA_INT_H_
 
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) && !defined(__MINGW32__)
 #define _GNU_SOURCE  /* for strndup() */
 #include <syslog.h>
-#else
+#endif
+
+#ifdef _MSC_VER
 typedef int mode_t;
 #endif
+
 #include <fcntl.h>
 
 

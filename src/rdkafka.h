@@ -55,7 +55,7 @@ extern "C" {
 #endif
 #endif
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__MINGW32__)
 #include <basetsd.h>
 #ifndef WIN32_MEAN_AND_LEAN
 #define WIN32_MEAN_AND_LEAN
@@ -1920,7 +1920,7 @@ rd_kafka_conf_set_closesocket_cb (rd_kafka_conf_t *conf,
 
 
 
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) && !defined(__MINGW32__)
 /**
  * @brief Set open callback.
  *

@@ -112,7 +112,7 @@ int cnd_timedwait_abs (cnd_t *cnd, mtx_t *mtx, const struct timespec *tspec) {
  * @name Read-write locks
  * @{
  */
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) && !defined(__MINGW32__)
 int rwlock_init (rwlock_t *rwl) {
         int r = pthread_rwlock_init(rwl, NULL);
         if (r) {

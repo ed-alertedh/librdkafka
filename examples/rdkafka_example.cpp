@@ -39,7 +39,7 @@
 #include <csignal>
 #include <cstring>
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__MINGW32__)
 #include "../win32/wingetopt.h"
 #elif _AIX
 #include <unistd.h>

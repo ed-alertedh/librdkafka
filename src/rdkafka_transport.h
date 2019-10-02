@@ -29,7 +29,7 @@
 #ifndef _RDKAFKA_TRANSPORT_H_
 #define _RDKAFKA_TRANSPORT_H_
 
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) && !defined(__MINGW32__)
 #include <poll.h>
 #endif
 

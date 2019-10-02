@@ -26,7 +26,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__MINGW32__)
 #define RD_UNITTEST_QPC_OVERRIDES 1
 #endif
 
@@ -402,7 +402,7 @@ int rd_unittest (void) {
 #if WITH_HDRHISTOGRAM
                 { "rdhdrhistogram", unittest_rdhdrhistogram },
 #endif
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__MINGW32__)
                 { "rdclock", unittest_rdclock },
 #endif
                 { "conf", unittest_conf },
@@ -416,7 +416,7 @@ int rd_unittest (void) {
         };
         int i;
 
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) && !defined(__MINGW32__)
         if (getenv("RD_UT_ASSERT"))
                 rd_unittest_assert_on_failure = 1;
 #endif

@@ -28,7 +28,7 @@
 
 
 
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) && !defined(__MINGW32__)
 #define _GNU_SOURCE
 /*
  * AIX defines this and the value needs to be set correctly. For Solaris,
@@ -4704,7 +4704,7 @@ rd_kafka_broker_t *rd_kafka_broker_add (rd_kafka_t *rk,
 					int32_t nodeid) {
 	rd_kafka_broker_t *rkb;
         int r;
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) && !defined(__MINGW32__)
         sigset_t newset, oldset;
 #endif
 
@@ -4774,7 +4774,7 @@ rd_kafka_broker_t *rd_kafka_broker_add (rd_kafka_t *rk,
 	else /* disabled */
 		rkb->rkb_ts_metadata_poll = UINT64_MAX;
 
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) && !defined(__MINGW32__)
         /* Block all signals in newly created thread.
          * To avoid race condition we block all signals in the calling
          * thread, which the new thread will inherit its sigmask from,
@@ -4837,7 +4837,7 @@ rd_kafka_broker_t *rd_kafka_broker_add (rd_kafka_t *rk,
 
 		rd_free(rkb);
 
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) && !defined(__MINGW32__)
 		/* Restore sigmask of caller */
 		pthread_sigmask(SIG_SETMASK, &oldset, NULL);
 #endif
@@ -4871,7 +4871,7 @@ rd_kafka_broker_t *rd_kafka_broker_add (rd_kafka_t *rk,
 
 	rd_kafka_broker_unlock(rkb);
 
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) && !defined(__MINGW32__)
 	/* Restore sigmask of caller */
 	pthread_sigmask(SIG_SETMASK, &oldset, NULL);
 #endif

@@ -29,7 +29,7 @@
 #ifndef _RDADDR_H_
 #define _RDADDR_H_
 
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) && !defined(__MINGW32__)
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>

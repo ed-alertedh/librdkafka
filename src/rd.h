@@ -30,7 +30,7 @@
 #ifndef _RD_H_
 #define _RD_H_
 
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) && !defined(__MINGW32__)
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE  /* for strndup() */
 #endif
@@ -51,7 +51,7 @@
 #include "tinycthread.h"
 #include "rdsysqueue.h"
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__MINGW32__)
 /* Visual Studio */
 #include "win32_config.h"
 #else
@@ -59,7 +59,7 @@
 #include "../config.h" /* mklove output */
 #endif
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__MINGW32__)
 /* Win32/Visual Studio */
 #include "rdwin32.h"
 
@@ -113,7 +113,7 @@ static RD_INLINE RD_UNUSED void rd_free(void *ptr) {
 }
 
 static RD_INLINE RD_UNUSED char *rd_strdup(const char *s) {
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) && !defined(__MINGW32__)
 	char *n = strdup(s);
 #else
 	char *n = _strdup(s);

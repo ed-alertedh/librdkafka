@@ -34,7 +34,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__MINGW32__)
 #include <direct.h> /* _getcwd */
 #else
 #include <sys/wait.h> /* waitpid */
@@ -429,7 +429,7 @@ static int test_closesocket_cb (int s, void *opaque) {
                 sockem_close(skm);
                 test_socket_del(test, skm, 0/*nolock*/);
         } else {
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__MINGW32__)
                 closesocket(s);
 #else
                 close(s);
@@ -511,7 +511,7 @@ int tmout_multip (int msecs) {
 
 
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__MINGW32__)
 static void test_init_win32 (void) {
         /* Enable VT emulation to support colored output. */
         HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -548,7 +548,7 @@ static void test_init (void) {
                 seed = atoi(tmp);
         else
                 seed = test_clock() & 0xffffffff;
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__MINGW32__)
         test_init_win32();
 	{
 		LARGE_INTEGER cycl;
@@ -623,7 +623,7 @@ static void test_read_conf_file (const char *conf_path,
 	char buf[1024];
 	int line = 0;
 
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) && !defined(__MINGW32__)
 	fp = fopen(conf_path, "r");
 #else
 	fp = NULL;
@@ -700,7 +700,7 @@ const char *test_conf_get_path (void) {
 }
 
 const char *test_getenv (const char *env, const char *def) {
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) && !defined(__MINGW32__)
         const char *tmp;
         tmp = getenv(env);
         if (tmp && *tmp)
@@ -780,7 +780,7 @@ void test_conf_init (rd_kafka_conf_t **conf, rd_kafka_topic_conf_t **topic_conf,
 
 static RD_INLINE unsigned int test_rand(void) {
 	unsigned int r;
-#if _MSC_VER
+#if defined(_MSC_VER) || defined(__MINGW32__)
 	rand_s(&r);
 #else
 	r = rand();
@@ -957,7 +957,7 @@ static int run_test0 (struct run_args *run_args) {
                 test->stats_fp = NULL;
                 /* Delete file if nothing was written */
                 if (pos == 0) {
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) && !defined(__MINGW32__)
                         unlink(stats_file);
 #else
                         _unlink(stats_file);
@@ -1019,7 +1019,7 @@ static void check_test_timeouts (void) {
                                    1000000);
                         test_curr = save_test;
                         tests_running_cnt--; /* fail-later misses this*/
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__MINGW32__)
                         TerminateThread(test->thrd, -1);
 #else
                         pthread_kill(test->thrd, SIGKILL);
@@ -1173,7 +1173,7 @@ static int test_summary (int do_lock) {
                 TEST_LOCK();
 
 	if (test_sql_cmd) {
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__MINGW32__)
 		sql_fp = _popen(test_sql_cmd, "w");
 #else
 		sql_fp = popen(test_sql_cmd, "w");
@@ -1338,7 +1338,7 @@ static int test_summary (int do_lock) {
         return tests_failed - tests_failed_known;
 }
 
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) && !defined(__MINGW32__)
 static void test_sig_term (int sig) {
 	if (test_exit)
 		exit(1);
@@ -1410,7 +1410,7 @@ int main(int argc, char **argv) {
 
         test_init();
 
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) && !defined(__MINGW32__)
         signal(SIGINT, test_sig_term);
 #endif
         tests_to_run = test_getenv("TESTS", NULL);
@@ -1553,7 +1553,7 @@ int main(int argc, char **argv) {
 
         {
                 char cwd[512], *pcwd;
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__MINGW32__)
                 pcwd = _getcwd(cwd, sizeof(cwd) - 1);
 #else
                 pcwd = getcwd(cwd, sizeof(cwd) - 1);
@@ -3523,7 +3523,7 @@ void test_print_partition_list (const rd_kafka_topic_partition_list_t
  * @brief Execute kafka-topics.sh from the Kafka distribution.
  */
 void test_kafka_topics (const char *fmt, ...) {
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__MINGW32__)
 	TEST_FAIL("%s not supported on Windows, yet", __FUNCTION__);
 #else
 	char cmd[512];
@@ -3995,7 +3995,7 @@ int test_check_auto_create_topic (void) {
  * @returns -1 if the application could not be started, else the pid.
  */
 int test_run_java (const char *cls, const char **argv) {
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__MINGW32__)
         TEST_WARN("%s(%s) not supported Windows, yet",
                   __FUNCTION__, cls);
         return -1;
@@ -4069,7 +4069,7 @@ int test_run_java (const char *cls, const char **argv) {
  * @returns -1 if the child process exited successfully, else -1.
  */
 int test_waitpid (int pid) {
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__MINGW32__)
         TEST_WARN("%s() not supported Windows, yet",
                   __FUNCTION__);
         return -1;
@@ -4180,7 +4180,7 @@ int test_can_create_topics (int skip) {
         if (test_broker_version >= TEST_BRKVER(0,10,2,0))
                 return 1;
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__MINGW32__)
 	if (skip)
 		TEST_SKIP("Cannot create topics on Win32\n");
 	return 0;
@@ -5205,7 +5205,7 @@ void test_fail0 (const char *file, int line, const char *function,
         char timestr[32];
         time_t tnow = time(NULL);
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__MINGW32__)
         ctime_s(timestr, sizeof(timestr), &tnow);
 #else
         ctime_r(&tnow, timestr);

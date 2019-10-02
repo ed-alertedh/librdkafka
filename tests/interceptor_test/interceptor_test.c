@@ -50,7 +50,7 @@
 
 #include "interceptor_test.h"
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__MINGW32__)
 #define DLL_EXPORT __declspec(dllexport)
 #else
 #define DLL_EXPORT
