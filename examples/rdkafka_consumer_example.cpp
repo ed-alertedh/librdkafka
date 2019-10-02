@@ -39,11 +39,11 @@
 #include <csignal>
 #include <cstring>
 
-#if !defined(_MSC_VER) && !defined(__MINGW32__)
+#if !defined(_MSC_VER) //&& !defined(__MINGW32__)
 #include <sys/time.h>
 #endif
 
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#if defined(_MSC_VER)// || defined(__MINGW32__)
 #include "../win32/wingetopt.h"
 #include <atltime.h>
 #elif _AIX
@@ -77,7 +77,7 @@ static void sigterm (int sig) {
  * @brief format a string timestamp from the current time
  */
 static void print_time () {
-#if !defined(_MSC_VER) && !defined(__MINGW32__)
+#if !defined(_MSC_VER)// && !defined(__MINGW32__)
         struct timeval tv;
         char buf[64];
         gettimeofday(&tv, NULL);

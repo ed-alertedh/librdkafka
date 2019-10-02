@@ -103,7 +103,7 @@ else()
 endif()
 
 add_executable(rdkafka_test ${sources})
-target_link_libraries(rdkafka_test PUBLIC rdkafka++)
+target_link_libraries(rdkafka_test PUBLIC rdkafka++ -static -static-libgcc -static-libstdc++)
 
 add_test(NAME RdKafkaTestInParallel COMMAND rdkafka_test -p5)
 add_test(NAME RdKafkaTestSequentially COMMAND rdkafka_test -p1)

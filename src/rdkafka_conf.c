@@ -48,9 +48,9 @@
 #include <netinet/tcp.h>
 #else
 
-#ifndef WIN32_MEAN_AND_LEAN
-#define WIN32_MEAN_AND_LEAN
-#endif
+// #ifndef WIN32_MEAN_AND_LEAN
+// #define WIN32_MEAN_AND_LEAN
+// #endif
 #include <windows.h>
 #endif
 

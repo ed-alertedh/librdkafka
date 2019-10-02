@@ -32,14 +32,16 @@
 #ifndef _RDWIN32_H_
 #define _RDWIN32_H_
 
-
+#define WINVER 0x0600
+#define _WIN32_WINNT 0x0600
 #include <stdlib.h>
 #include <inttypes.h>
 #include <sys/types.h>
 #include <time.h>
 #include <assert.h>
-#define WIN32_MEAN_AND_LEAN
-#include <Winsock2.h>  /* for struct timeval */
+
+// #define WIN32_MEAN_AND_LEAN
+#include <winsock2.h>  /* for struct timeval */
 #include <io.h>
 #include <fcntl.h>
 

@@ -153,7 +153,7 @@ endif()
 
 if(WIN32)  
   if(RDKAFKA_BUILD_STATIC)
-    target_link_libraries(rdkafka PUBLIC crypt32)
+    target_link_libraries(rdkafka PUBLIC crypt32 ws2_32 secur32)
   else()
     target_compile_definitions(rdkafka PRIVATE LIBRDKAFKA_EXPORTS)
   endif()

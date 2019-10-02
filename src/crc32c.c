@@ -50,7 +50,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#if !defined(_MSC_VER) && !defined(__MINGW32__)
+#if !defined(_MSC_VER)
 #include <unistd.h>
 #endif
 

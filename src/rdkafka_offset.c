@@ -62,7 +62,7 @@
 #include <io.h>
 #include <share.h>
 #include <sys/stat.h>
-#include <Shlwapi.h>
+#include <shlwapi.h>
 #endif
 
 #ifdef _MSC_VER

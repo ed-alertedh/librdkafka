@@ -27,12 +27,15 @@
  */
 
 
+
 #include "rd.h"
 #include "rdaddr.h"
 #include "rdrand.h"
 
 #if defined(_MSC_VER) || defined(__MINGW32__)
-#include <WS2tcpip.h>
+#define WINVER 0x0600
+#define _WIN32_WINNT 0x0600
+#include <ws2tcpip.h>
 #endif
 
 const char *rd_sockaddr2str (const void *addr, int flags) {
