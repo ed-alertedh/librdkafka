@@ -33,8 +33,6 @@
 #include "rdrand.h"
 
 #if defined(_MSC_VER) || defined(__MINGW32__)
-#define WINVER 0x0600
-#define _WIN32_WINNT 0x0600
 #include <ws2tcpip.h>
 #endif
 

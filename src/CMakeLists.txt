@@ -146,7 +146,7 @@ endif()
 
 # Support '#include <rdkafka.h>'
 target_include_directories(rdkafka PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}>")
-target_compile_definitions(rdkafka PUBLIC ${rdkafka_compile_definitions})
+target_compile_definitions(rdkafka PUBLIC ${rdkafka_compile_definitions}  WINVER=0x0603 _WIN32_WINNT=0x0603)
 if(RDKAFKA_BUILD_STATIC)
   target_compile_definitions(rdkafka PUBLIC LIBRDKAFKA_STATICLIB)
 endif()

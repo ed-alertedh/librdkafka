@@ -57,12 +57,10 @@ extern "C" {
 
 #if defined(_MSC_VER) || defined(__MINGW32__)
 // Vista (needed for socket code)
-#define WINVER 0x0600
-#define _WIN32_WINNT 0x0600
 #include <basetsd.h>
-// #ifndef WIN32_MEAN_AND_LEAN
-// #define WIN32_MEAN_AND_LEAN
-// #endif
+#ifndef WIN32_MEAN_AND_LEAN
+#define WIN32_MEAN_AND_LEAN
+#endif
 #include <winsock2.h>  /* for sockaddr, .. */
 typedef SSIZE_T ssize_t;
 #define RD_UNUSED

@@ -34,9 +34,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #else
-//#define WIN32_MEAN_AND_LEAN
-#define WINVER 0x0600
-#define _WIN32_WINNT 0x0600
+#define WIN32_MEAN_AND_LEAN
 #include <winsock2.h>
 #include <ws2ipdef.h>
 #endif

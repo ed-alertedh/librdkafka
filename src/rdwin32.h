@@ -32,8 +32,6 @@
 #ifndef _RDWIN32_H_
 #define _RDWIN32_H_
 
-#define WINVER 0x0600
-#define _WIN32_WINNT 0x0600
 #include <stdlib.h>
 #include <inttypes.h>
 #include <sys/types.h>
@@ -88,7 +86,13 @@ struct msghdr {
 #define RD_WARN_UNUSED_RESULT
 #define RD_NORETURN __declspec(noreturn)
 #define RD_IS_CONSTANT(p)  (0)
+#ifdef _MSC_VER
 #define RD_TLS __declspec(thread)
+#elif defined(__MINGW32__)
+#define RD_TLS __thread
+#else
+#error Unknown Windows compiler, cannot set RD_TLS (thread-local-storage attribute)
+#endif
 
 
 /**
@@ -231,7 +235,7 @@ int rd_gettimeofday (struct timeval *tv, struct timezone *tz) {
  * @returns 0 on success or -1 on failure (see rd_kafka_socket_errno)
  */
 static RD_UNUSED int rd_fd_set_nonblocking (int fd) {
-        int on = 1;
+        u_long on = 1;
         if (ioctlsocket(fd, FIONBIO, &on) == SOCKET_ERROR)
                 return (int)WSAGetLastError();
         return 0;
