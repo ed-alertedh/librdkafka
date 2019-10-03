@@ -38,7 +38,7 @@
 #include <time.h>
 #include <assert.h>
 
-// #define WIN32_MEAN_AND_LEAN
+#define WIN32_MEAN_AND_LEAN
 #include <winsock2.h>  /* for struct timeval */
 #include <io.h>
 #include <fcntl.h>

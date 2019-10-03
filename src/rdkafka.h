@@ -56,7 +56,6 @@ extern "C" {
 #endif
 
 #if defined(_MSC_VER) || defined(__MINGW32__)
-// Vista (needed for socket code)
 #include <basetsd.h>
 #ifndef WIN32_MEAN_AND_LEAN
 #define WIN32_MEAN_AND_LEAN
