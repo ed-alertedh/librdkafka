@@ -57,7 +57,7 @@ static RD_INLINE int32_t RD_UNUSED rd_atomic32_add (rd_atomic32_t *ra, int32_t v
 #ifdef __SUNPRO_C
 	return atomic_add_32_nv(&ra->val, v);
 #elif defined(_MSC_VER) || defined(__MINGW32__)
-	return InterlockedAdd(&ra->val, v);
+	return InterlockedAdd((LONG*) &ra->val, v);
 #elif !HAVE_ATOMICS_32
 	int32_t r;
 	mtx_lock(&ra->lock);
@@ -74,7 +74,7 @@ static RD_INLINE int32_t RD_UNUSED rd_atomic32_sub(rd_atomic32_t *ra, int32_t v)
 #ifdef __SUNPRO_C
 	return atomic_add_32_nv(&ra->val, -v);
 #elif defined(_MSC_VER) || defined(__MINGW32__)
-	return InterlockedAdd(&ra->val, -v);
+	return InterlockedAdd((LONG*) &ra->val, -v);
 #elif !HAVE_ATOMICS_32
 	int32_t r;
 	mtx_lock(&ra->lock);
@@ -103,7 +103,7 @@ static RD_INLINE int32_t RD_UNUSED rd_atomic32_get(rd_atomic32_t *ra) {
 
 static RD_INLINE int32_t RD_UNUSED rd_atomic32_set(rd_atomic32_t *ra, int32_t v) {
 #if defined(_MSC_VER) || defined(__MINGW32__)
-	return InterlockedExchange(&ra->val, v);
+	return InterlockedExchange((LONG*) &ra->val, v);
 #elif !HAVE_ATOMICS_32
 	int32_t r;
 	mtx_lock(&ra->lock);
