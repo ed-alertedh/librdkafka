@@ -161,7 +161,7 @@ endif()
 
 if(MINGW_BUILD)
     # Target Windows 8.1 to match the VS projects (MinGW defaults to an older WinAPI version)
-    target_compile_definitions(rdkafka PUBLIC WINVER=0x0603 _WIN32_WINNT=0x0603)
+    target_compile_definitions(rdkafka PUBLIC WINVER=0x0603 _WIN32_WINNT=0x0603 UNICODE)
     # MinGW ignores `#pragma comment(lib, ...)` so we need to specify link libs
     target_link_libraries(rdkafka PUBLIC crypt32 ws2_32 secur32)
 endif(MINGW_BUILD)
