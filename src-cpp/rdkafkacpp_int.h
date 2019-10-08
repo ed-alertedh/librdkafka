@@ -40,7 +40,7 @@ extern "C" {
 #include "../src/rdkafka.h"
 }
 
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#ifdef WITH_WIN32
 /* Visual Studio */
 #include "../src/win32_config.h"
 #else

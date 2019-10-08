@@ -46,7 +46,7 @@
 #include <sys/time.h> /* for gettimeofday() */
 #endif
 
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#ifdef WITH_WIN32
 #define socket_errno() WSAGetLastError()
 #else
 #define socket_errno() errno
@@ -175,7 +175,7 @@ static __attribute__((unused)) __inline int64_t sockem_clock (void) {
         struct timeval tv;
         gettimeofday(&tv, NULL);
         return ((int64_t)tv.tv_sec * 1000000LLU) + (int64_t)tv.tv_usec;
-#elif defined(_MSC_VER) || defined(__MINGW32__)
+#elif defined(WITH_WIN32)
         return (int64_t)GetTickCount64() * 1000LLU;
 #else
         struct timespec ts;
@@ -513,11 +513,11 @@ static int sockem_do_connect (int s, const struct sockaddr *addr,
         if (r == SOCKET_ERROR) {
                 int serr = socket_errno();
                 if (serr != EINPROGRESS
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#ifdef WITH_WIN32
                     && serr != WSAEWOULDBLOCK
 #endif
                         ) {
-#if !defined(_MSC_VER) && !defined(__MINGW32__)
+#ifndef WITH_WIN32
                         errno = serr;
 #endif
                         return -1;

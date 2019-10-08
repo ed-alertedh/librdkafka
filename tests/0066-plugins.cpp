@@ -31,7 +31,7 @@
 #include <cstdlib>
 #include "testcpp.h"
 
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#ifdef WITH_WIN32
 #include <direct.h>
 #endif
 
@@ -64,7 +64,7 @@ static void do_test_plugin () {
   };
 
   char cwd[512], *pcwd;
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#ifdef WITH_WIN32
   pcwd = _getcwd(cwd, sizeof(cwd)-1);
 #else
   pcwd = getcwd(cwd, sizeof(cwd)-1);

@@ -25,7 +25,7 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#ifdef WITH_WIN32
 #pragma comment(lib, "ws2_32.lib")
 #endif
 
@@ -70,7 +70,7 @@ static void rd_kafka_transport_close0 (rd_kafka_t *rk, int s) {
         if (rk->rk_conf.closesocket_cb)
                 rk->rk_conf.closesocket_cb(s, rk->rk_conf.opaque);
         else {
-#if !defined(_MSC_VER) && !defined(__MINGW32__)
+#ifndef WITH_WIN32
 		close(s);
 #else
 		closesocket(s);
@@ -103,7 +103,7 @@ void rd_kafka_transport_close (rd_kafka_transport_t *rktrans) {
 
 
 static const char *socket_strerror(int err) {
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#ifdef WITH_WIN32
 	static RD_TLS char buf[256];
         rd_strerror_w32(err, buf, sizeof(buf));
 	return buf;
@@ -115,7 +115,7 @@ static const char *socket_strerror(int err) {
 
 
 
-#if !defined(_MSC_VER) && !defined(__MINGW32__)
+#ifndef WITH_WIN32
 /**
  * @brief sendmsg() abstraction, converting a list of segments to iovecs.
  * @remark should only be called if the number of segments is > 1.
@@ -174,14 +174,14 @@ rd_kafka_transport_socket_send0 (rd_kafka_transport_t *rktrans,
                 ssize_t r;
 
                 r = send(rktrans->rktrans_s, p,
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#ifdef WITH_WIN32
                          (int)rlen, (int)0
 #else
                          rlen, 0
 #endif
                 );
 
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#ifdef WITH_WIN32
                 if (unlikely(r == SOCKET_ERROR)) {
                         if (sum > 0 || WSAGetLastError() == WSAEWOULDBLOCK)
                                 return sum;
@@ -220,7 +220,7 @@ static ssize_t
 rd_kafka_transport_socket_send (rd_kafka_transport_t *rktrans,
                                 rd_slice_t *slice,
                                 char *errstr, size_t errstr_size) {
-#if !defined(_MSC_VER) && !defined(__MINGW32__)
+#ifndef WITH_WIN32
         /* FIXME: Use sendmsg() with iovecs if there's more than one segment
          * remaining, otherwise (or if platform does not have sendmsg)
          * use plain send(). */
@@ -233,7 +233,7 @@ rd_kafka_transport_socket_send (rd_kafka_transport_t *rktrans,
 
 
 
-#if !defined(_MSC_VER) && !defined(__MINGW32__)
+#ifndef WITH_WIN32
 /**
  * @brief recvmsg() abstraction, converting a list of segments to iovecs.
  * @remark should only be called if the number of segments is > 1.
@@ -300,7 +300,7 @@ rd_kafka_transport_socket_recv0 (rd_kafka_transport_t *rktrans,
                 ssize_t r;
 
                 r = recv(rktrans->rktrans_s, p,
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#ifdef WITH_WIN32
                          (int)
 #endif
                          len,
@@ -309,7 +309,7 @@ rd_kafka_transport_socket_recv0 (rd_kafka_transport_t *rktrans,
                 if (unlikely(r == SOCKET_ERROR)) {
                         int errno_save = socket_errno;
                         if (errno_save == EAGAIN
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#ifdef WITH_WIN32
                            || errno_save == WSAEWOULDBLOCK
 #endif 
                            )
@@ -317,7 +317,7 @@ rd_kafka_transport_socket_recv0 (rd_kafka_transport_t *rktrans,
                         else {
                                 rd_snprintf(errstr, errstr_size, "%s",
                                     socket_strerror(errno_save));
-#if !defined(_MSC_VER) && !defined(__MINGW32__)
+#ifndef WITH_WIN32
                                 errno = errno_save;
 #endif
                                 return -1;
@@ -327,7 +327,7 @@ rd_kafka_transport_socket_recv0 (rd_kafka_transport_t *rktrans,
                          * connection closed. */
                         rd_snprintf(errstr, errstr_size,
                                     "Disconnected");
-#if !defined(_MSC_VER) && !defined(__MINGW32__)
+#ifndef WITH_WIN32
                         errno = ECONNRESET;
 #endif
                         return -1;
@@ -351,7 +351,7 @@ static ssize_t
 rd_kafka_transport_socket_recv (rd_kafka_transport_t *rktrans,
                                 rd_buf_t *buf,
                                 char *errstr, size_t errstr_size) {
-#if !defined(_MSC_VER) && !defined(__MINGW32__)
+#ifndef WITH_WIN32
         /* FIXME: Use recvmsg() with iovecs if there's more than one segment
          * remaining, otherwise (or if platform does not have sendmsg)
          * use plain send(). */
@@ -895,7 +895,7 @@ rd_kafka_transport_t *rd_kafka_transport_connect (rd_kafka_broker_t *rkb,
                 if (connect(s, (struct sockaddr *)sinx,
                             RD_SOCKADDR_INX_LEN(sinx)) == SOCKET_ERROR &&
                     (socket_errno != EINPROGRESS
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#ifdef WITH_WIN32
                      && socket_errno != WSAEWOULDBLOCK
 #endif
                             ))
@@ -958,7 +958,7 @@ void rd_kafka_transport_poll_clear(rd_kafka_transport_t *rktrans, int event) {
  */
 int rd_kafka_transport_poll(rd_kafka_transport_t *rktrans, int tmout) {
         int r;
-#if !defined(_MSC_VER) && !defined(__MINGW32__)
+#ifndef WITH_WIN32
 	r = poll(rktrans->rktrans_pfd, rktrans->rktrans_pfd_cnt, tmout);
 	if (r <= 0)
 		return r;
@@ -1016,14 +1016,14 @@ int rd_kafka_transport_poll(rd_kafka_transport_t *rktrans, int tmout) {
  * in its own code. This means we might leak some memory on exit.
  */
 void rd_kafka_transport_term (void) {
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#ifdef WITH_WIN32
 	(void)WSACleanup(); /* FIXME: dangerous */
 #endif
 }
 #endif
 
 void rd_kafka_transport_init (void) {
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#ifdef WITH_WIN32
 	WSADATA d;
 	(void)WSAStartup(MAKEWORD(2, 2), &d);
 #endif

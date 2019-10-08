@@ -58,7 +58,7 @@
 #include <sys/types.h>
 #include <fcntl.h>
 
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#ifdef WITH_WIN32
 #include <io.h>
 #include <share.h>
 #include <sys/stat.h>
@@ -107,7 +107,7 @@ static void rd_kafka_offset_file_close (rd_kafka_toppar_t *rktp) {
 }
 
 
-#if !defined(_MSC_VER) && !defined(__MINGW32__)
+#ifndef WITH_WIN32
 /**
  * Linux version of open callback providing racefree CLOEXEC.
  */
@@ -127,7 +127,7 @@ int rd_kafka_open_cb_linux (const char *pathname, int flags, mode_t mode,
  */
 int rd_kafka_open_cb_generic (const char *pathname, int flags, mode_t mode,
                               void *opaque) {
-#if !defined(_MSC_VER) && !defined(__MINGW32__)
+#ifndef WITH_WIN32
 	int fd;
         int on = 1;
         fd = open(pathname, flags, mode);
@@ -150,7 +150,7 @@ static int rd_kafka_offset_file_open (rd_kafka_toppar_t *rktp) {
         rd_kafka_t *rk = rktp->rktp_rkt->rkt_rk;
         int fd;
 
-#if !defined(_MSC_VER) && !defined(__MINGW32__)
+#ifndef WITH_WIN32
 	mode_t mode = 0644;
 #else
 	mode_t mode = _S_IREAD|_S_IWRITE;
@@ -169,7 +169,7 @@ static int rd_kafka_offset_file_open (rd_kafka_toppar_t *rktp) {
 	}
 
 	rktp->rktp_offset_fp =
-#if !defined(_MSC_VER) && !defined(__MINGW32__)
+#ifndef WITH_WIN32
 		fdopen(fd, "r+");
 #else
 		_fdopen(fd, "r+");
@@ -245,7 +245,7 @@ static int rd_kafka_offset_file_sync (rd_kafka_toppar_t *rktp) {
                      rktp->rktp_rkt->rkt_topic->str,
                      rktp->rktp_partition);
 
-#if !defined(_MSC_VER) && !defined(__MINGW32__)
+#ifndef WITH_WIN32
 	(void)fflush(rktp->rktp_offset_fp);
 	(void)fsync(fileno(rktp->rktp_offset_fp)); // FIXME
 #else
@@ -312,7 +312,7 @@ rd_kafka_offset_file_commit (rd_kafka_toppar_t *rktp) {
                 (void)fflush(rktp->rktp_offset_fp);
 
 		/* Truncate file */
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#ifdef WITH_WIN32
 		if (_chsize_s(_fileno(rktp->rktp_offset_fp), len) == -1)
 			; /* Ignore truncate failures */
 #else

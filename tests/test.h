@@ -33,7 +33,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#if !defined(_MSC_VER) && !defined(__MINGW32__)
+#ifndef WITH_WIN32
 #include <unistd.h>
 #endif
 #include <errno.h>
@@ -50,7 +50,7 @@
 #endif
 
 #include "testshared.h"
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#ifdef WITH_WIN32
 #define sscanf(...) sscanf_s(__VA_ARGS__)
 #endif
 
@@ -134,7 +134,7 @@ struct test {
 };
 
 
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#ifdef WITH_WIN32
 #define TEST_F_KNOWN_ISSUE_WIN32  TEST_F_KNOWN_ISSUE
 #else
 #define TEST_F_KNOWN_ISSUE_WIN32 0

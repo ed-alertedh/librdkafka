@@ -39,7 +39,7 @@
 #include <openssl/pkcs12.h>
 #endif
 
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#ifdef WITH_WIN32
 #define socket_errno WSAGetLastError()
 #else
 #include <sys/socket.h>
@@ -81,7 +81,7 @@ struct rd_kafka_transport_s {
          * - TCP socket
          * - wake-up fd
          */
-#if !defined(_MSC_VER) && !defined(__MINGW32__)
+#ifndef WITH_WIN32
         struct pollfd rktrans_pfd[2];
 #else
         WSAPOLLFD rktrans_pfd[2];

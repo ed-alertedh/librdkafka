@@ -36,7 +36,7 @@
 #define _TINYCTHREAD_EXTRA_H_
 
 
-#if !defined(_MSC_VER) && !defined(__MINGW32__)
+#ifndef WITH_WIN32
 #include <pthread.h> /* needed for rwlock_t */
 #endif
 

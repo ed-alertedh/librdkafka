@@ -44,11 +44,11 @@
 #include <csignal>
 #include <cstring>
 
-#if !defined(_MSC_VER) && !defined(__MINGW32__)
+#ifndef WITH_WIN32
 #include <sys/time.h>
 #endif
 
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#ifdef WITH_WIN32
 #include "../win32/wingetopt.h"
 #include <atltime.h>
 #elif _AIX
@@ -78,7 +78,7 @@ static void sigterm (int sig) {
  * @returns the current wall-clock time in milliseconds
  */
 static int64_t now () {
-#if !defined(_MSC_VER) && !defined(__MINGW32__)
+#ifndef WITH_WIN32
         struct timeval tv;
         gettimeofday(&tv, NULL);
         return ((int64_t)tv.tv_sec * 1000) + (tv.tv_usec / 1000);

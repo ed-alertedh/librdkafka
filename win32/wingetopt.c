@@ -344,7 +344,7 @@ getopt_internal(int nargc, char * const *nargv, const char *options,
 	 * CV, 2009-12-14: Check POSIXLY_CORRECT anew if optind == 0 or
 	 *                 optreset != 0 for GNU compatibility.
 	 */
-#if !defined(_MSC_VER) && !defined(__MINGW32__)
+#ifndef WITH_WIN32
 	if (posixly_correct == -1 || optreset != 0)
 		posixly_correct = (getenv("POSIXLY_CORRECT") != NULL);
 #endif

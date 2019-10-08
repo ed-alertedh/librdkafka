@@ -55,7 +55,7 @@
 #include <stdint.h>
 #include <sys/types.h>
 
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#ifdef WITH_WIN32
 #ifndef ssize_t
 #ifndef _BASETSD_H_
 #include <basetsd.h>

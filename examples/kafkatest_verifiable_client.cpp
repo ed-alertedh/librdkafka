@@ -46,7 +46,7 @@
 #include <ctype.h>
 #include <strings.h>
 
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#ifdef WITH_WIN32
 #include "../win32/wingetopt.h"
 #elif _AIX
 #include <unistd.h>

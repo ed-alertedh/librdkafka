@@ -57,7 +57,7 @@ struct rd_kafka_sasl_provider {
                               char *errstr, size_t errstr_size);
 };
 
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#ifdef WITH_WIN32
 extern const struct rd_kafka_sasl_provider rd_kafka_sasl_win32_provider;
 #endif
 

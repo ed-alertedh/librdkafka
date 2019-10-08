@@ -433,7 +433,7 @@ int main (int argc, char **argv) {
     delete msg;
   }
 
-#if !defined(_MSC_VER) && !defined(__MINGW32__)
+#ifndef WITH_WIN32
   alarm(10);
 #endif
 

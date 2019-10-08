@@ -29,7 +29,7 @@
 #ifndef _RDKAFKA_INT_H_
 #define _RDKAFKA_INT_H_
 
-#if !defined(_MSC_VER) && !defined(__MINGW32__)
+#ifndef WITH_WIN32
 #define _GNU_SOURCE  /* for strndup() */
 #include <syslog.h>
 #endif

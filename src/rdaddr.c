@@ -32,7 +32,7 @@
 #include "rdaddr.h"
 #include "rdrand.h"
 
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#ifdef WITH_WIN32
 #include <ws2tcpip.h>
 #endif
 
@@ -174,7 +174,7 @@ rd_sockaddr_list_t *rd_getaddrinfo (const char *nodesvc, const char *defsvc,
 #endif
 			*errstr = rd_strerror(errno);
 		else {
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#ifdef WITH_WIN32
 			*errstr = gai_strerrorA(r);
 #else
 			*errstr = gai_strerror(r);

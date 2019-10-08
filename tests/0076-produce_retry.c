@@ -188,7 +188,7 @@ static rd_kafka_resp_err_t on_request_sent (rd_kafka_t *rk,
                 ssize_t r;
                 printf(_C_CYA "%s:%d: shutting down socket %d (%s)\n" _C_CLR,
                        __FILE__, __LINE__, sockfd, brokername);
-#if defined(_MSC_VER) || defined(__MINGW32__)
+#ifdef WITH_WIN32
                 closesocket(sockfd);
 #else
                 close(sockfd);
