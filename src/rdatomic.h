@@ -88,7 +88,7 @@ static RD_INLINE int32_t RD_UNUSED rd_atomic32_sub(rd_atomic32_t *ra, int32_t v)
 }
 
 static RD_INLINE int32_t RD_UNUSED rd_atomic32_get(rd_atomic32_t *ra) {
-#ifdef WITH_WIN32 || defined(__SUNPRO_C)
+#if defined(WITH_WIN32) || defined(__SUNPRO_C)
 	return ra->val;
 #elif !HAVE_ATOMICS_32
 	int32_t r;
@@ -125,7 +125,7 @@ static RD_INLINE int32_t RD_UNUSED rd_atomic32_set(rd_atomic32_t *ra, int32_t v)
 
 static RD_INLINE RD_UNUSED void rd_atomic64_init (rd_atomic64_t *ra, int64_t v) {
 	ra->val = v;
-#ifndef WITH_WIN32 && !HAVE_ATOMICS_64
+#if !defined(WITH_WIN32) && !HAVE_ATOMICS_64
 	mtx_init(&ra->lock, mtx_plain);
 #endif
 }
@@ -165,7 +165,7 @@ static RD_INLINE int64_t RD_UNUSED rd_atomic64_sub(rd_atomic64_t *ra, int64_t v)
 }
 
 static RD_INLINE int64_t RD_UNUSED rd_atomic64_get(rd_atomic64_t *ra) {
-#ifdef WITH_WIN32 || defined(__SUNPRO_C)
+#if defined(WITH_WIN32) || defined(__SUNPRO_C)
 	return ra->val;
 #elif !HAVE_ATOMICS_64
 	int64_t r;
