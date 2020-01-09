@@ -29,7 +29,7 @@
 #ifndef _RDADDR_H_
 #define _RDADDR_H_
 
-#ifndef WITH_WIN32
+#ifndef _WIN32
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>

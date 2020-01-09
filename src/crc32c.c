@@ -50,7 +50,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#ifndef WITH_WIN32
+#ifndef _WIN32
 #include <unistd.h>
 #endif
 

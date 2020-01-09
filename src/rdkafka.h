@@ -55,7 +55,7 @@ extern "C" {
 #endif
 #endif
 
-#ifdef WITH_WIN32
+#ifdef _WIN32
 #include <basetsd.h>
 #ifndef WIN32_MEAN_AND_LEAN
 #define WIN32_MEAN_AND_LEAN
@@ -1937,7 +1937,7 @@ rd_kafka_conf_set_closesocket_cb (rd_kafka_conf_t *conf,
 
 
 
-#ifndef WITH_WIN32
+#ifndef _WIN32
 /**
  * @brief Set open callback.
  *

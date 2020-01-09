@@ -44,7 +44,7 @@
 #endif
 #include "rdunittest.h"
 
-#ifndef WITH_WIN32
+#ifndef _WIN32
 #include <netinet/tcp.h>
 #else
 
@@ -241,7 +241,7 @@ static const struct rd_kafka_property rd_kafka_properties[] = {
                 { 0x8, "sasl" },
 		{ 0x10, "regex" },
 		{ 0x20, "lz4" },
-#if defined(WITH_WIN32) || WITH_SASL_CYRUS
+#if defined(_WIN32) || WITH_SASL_CYRUS
                 { 0x40, "sasl_gssapi" },
 #endif
                 { 0x80, "sasl_plain" },
@@ -746,7 +746,7 @@ static const struct rd_kafka_property rd_kafka_properties[] = {
           "This client's Kerberos principal name. "
           "(Not supported on Windows, will use the logon user's principal).",
 	  .sdef = "kafkaclient" },
-#ifndef WITH_WIN32
+#ifndef _WIN32
         { _RK_GLOBAL, "sasl.kerberos.kinit.cmd", _RK_C_STR,
           _RK(sasl.kinit_cmd),
           "Shell command to refresh or acquire the client's Kerberos ticket. "
@@ -2052,7 +2052,7 @@ void rd_kafka_desensitize_str (char *str) {
         size_t len;
         static const char redacted[] = "(REDACTED)";
 
-#ifdef WITH_WIN32
+#ifdef _WIN32
         len = strlen(str);
         SecureZeroMemory(str, len);
 #else
@@ -2510,7 +2510,7 @@ rd_kafka_conf_set_closesocket_cb (rd_kafka_conf_t *conf,
 
 
 
-#ifndef WITH_WIN32
+#ifndef _WIN32
 void rd_kafka_conf_set_open_cb (rd_kafka_conf_t *conf,
                                 int (*open_cb) (const char *pathname,
                                                 int flags, mode_t mode,

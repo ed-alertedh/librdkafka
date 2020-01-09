@@ -52,7 +52,7 @@
 #include "rd.h"
 #include "rdtime.h"
 
-#ifdef WITH_WIN32
+#ifdef _WIN32
 #include "../win32/wingetopt.h"
 #include "../win32/wintime.h"
 #endif
@@ -774,7 +774,7 @@ static rd_kafka_resp_err_t do_produce (rd_kafka_t *rk,
  */
 static void do_sleep (int sleep_us) {
         if (sleep_us > 100) {
-#ifdef WITH_WIN32
+#ifdef _WIN32
                 Sleep(sleep_us / 1000);
 #else
                 usleep(sleep_us);
@@ -1263,7 +1263,7 @@ int main (int argc, char **argv) {
         if (stats_intvlstr) {
                 /* User enabled stats (-T) */
 
-#ifndef WITH_WIN32
+#ifndef _WIN32
                 if (stats_cmd) {
                         if (!(stats_fp = popen(stats_cmd, "we"))) {
                                 fprintf(stderr,
@@ -1692,7 +1692,7 @@ int main (int argc, char **argv) {
 		fclose(latency_fp);
 
         if (stats_fp) {
-#ifndef WITH_WIN32
+#ifndef _WIN32
                 pclose(stats_fp);
 #endif
                 stats_fp = NULL;

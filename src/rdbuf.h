@@ -29,7 +29,7 @@
 #ifndef _RDBUF_H
 #define _RDBUF_H
 
-#ifndef WITH_WIN32
+#ifndef _WIN32
 /* for struct iovec */
 #include <sys/socket.h>
 #include <sys/types.h>

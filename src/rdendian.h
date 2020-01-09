@@ -110,7 +110,7 @@
 #define le64toh(x) (x)
 #endif
 
-#elif defined(WITH_WIN32)
+#elif defined(_WIN32)
 #include <intrin.h>
 
 #define be64toh(x) _byteswap_uint64(x)

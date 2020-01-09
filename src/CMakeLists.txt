@@ -159,7 +159,6 @@ if(WIN32)
   else()
     target_compile_definitions(rdkafka PRIVATE LIBRDKAFKA_EXPORTS)
   endif()
-  target_compile_definitions(rdkafka PUBLIC WITH_WIN32)
 endif()
 
 if(MINGW_BUILD)

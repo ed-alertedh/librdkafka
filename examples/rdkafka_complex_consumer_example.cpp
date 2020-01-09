@@ -433,7 +433,7 @@ int main (int argc, char **argv) {
     delete msg;
   }
 
-#ifndef WITH_WIN32
+#ifndef _WIN32
   alarm(10);
 #endif
 

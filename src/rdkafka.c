@@ -58,7 +58,7 @@
 #include "crc32c.h"
 #include "rdunittest.h"
 
-#ifdef WITH_WIN32
+#ifdef _WIN32
 #include <sys/types.h>
 #include <sys/timeb.h>
 #endif
@@ -326,7 +326,7 @@ void rd_kafka_log_print(const rd_kafka_t *rk, int level,
 		fac, rk ? rk->rk_name : "", buf);
 }
 
-#ifndef WITH_WIN32
+#ifndef _WIN32
 void rd_kafka_log_syslog (const rd_kafka_t *rk, int level,
 			  const char *fac, const char *buf) {
 	static int initialized = 0;
@@ -932,7 +932,7 @@ void rd_kafka_destroy_final (rd_kafka_t *rk) {
 
 static void rd_kafka_destroy_app (rd_kafka_t *rk, int flags) {
         thrd_t thrd;
-#ifndef WITH_WIN32
+#ifndef _WIN32
 	int term_sig = rk->rk_conf.term_sig;
 #endif
         int res;
@@ -998,7 +998,7 @@ static void rd_kafka_destroy_app (rd_kafka_t *rk, int flags) {
          * The op itself is (likely) ignored by the receiver. */
         rd_kafka_q_enq(rk->rk_ops, rd_kafka_op_new(RD_KAFKA_OP_TERMINATE));
 
-#ifndef WITH_WIN32
+#ifndef _WIN32
         /* Interrupt main kafka thread to speed up termination. */
 	if (term_sig) {
                 rd_kafka_dbg(rk, GENERIC, "TERMINATE",
@@ -1102,7 +1102,7 @@ static void rd_kafka_destroy_internal (rd_kafka_t *rk) {
                 rd_kafka_q_enq(rkb->rkb_ops,
                                rd_kafka_op_new(RD_KAFKA_OP_TERMINATE));
 
-#ifndef WITH_WIN32
+#ifndef _WIN32
                 /* Interrupt IO threads to speed up termination. */
                 if (rk->rk_conf.term_sig)
 			pthread_kill(rkb->rkb_thread, rk->rk_conf.term_sig);
@@ -1928,7 +1928,7 @@ rd_kafka_t *rd_kafka_new (rd_kafka_type_t type, rd_kafka_conf_t *app_conf,
         rd_kafka_resp_err_t ret_err = RD_KAFKA_RESP_ERR_NO_ERROR;
         int ret_errno = 0;
         const char *conf_err;
-#ifndef WITH_WIN32
+#ifndef _WIN32
         sigset_t newset, oldset;
 #endif
         char builtin_features[128];
@@ -2161,7 +2161,7 @@ rd_kafka_t *rd_kafka_new (rd_kafka_type_t type, rd_kafka_conf_t *app_conf,
 
         rk->rk_eos.transactional_id = rd_kafkap_str_new(NULL, 0);
 
-#ifndef WITH_WIN32
+#ifndef _WIN32
         /* Block all signals in newly created threads.
          * To avoid race condition we block all signals in the calling
          * thread, which the new thread will inherit its sigmask from,
@@ -2207,7 +2207,7 @@ rd_kafka_t *rd_kafka_new (rd_kafka_type_t type, rd_kafka_conf_t *app_conf,
                         rd_kafka_wrunlock(rk);
                         mtx_unlock(&rk->rk_init_lock);
 
-#ifndef WITH_WIN32
+#ifndef _WIN32
                         /* Restore sigmask of caller */
                         pthread_sigmask(SIG_SETMASK, &oldset, NULL);
 #endif
@@ -2236,7 +2236,7 @@ rd_kafka_t *rd_kafka_new (rd_kafka_type_t type, rd_kafka_conf_t *app_conf,
 				    rd_strerror(errno), errno);
 		rd_kafka_wrunlock(rk);
                 mtx_unlock(&rk->rk_init_lock);
-#ifndef WITH_WIN32
+#ifndef _WIN32
                 /* Restore sigmask of caller */
                 pthread_sigmask(SIG_SETMASK, &oldset, NULL);
 #endif
@@ -2263,7 +2263,7 @@ rd_kafka_t *rd_kafka_new (rd_kafka_type_t type, rd_kafka_conf_t *app_conf,
 					"No brokers configured");
 	}
 
-#ifndef WITH_WIN32
+#ifndef _WIN32
 	/* Restore sigmask of caller */
 	pthread_sigmask(SIG_SETMASK, &oldset, NULL);
 #endif
@@ -4433,7 +4433,7 @@ const char *rd_kafka_get_debug_contexts(void) {
 
 
 int rd_kafka_path_is_dir (const char *path) {
-#ifdef WITH_WIN32
+#ifdef _WIN32
 	struct _stat st;
 	return (_stat(path, &st) == 0 && st.st_mode & S_IFDIR);
 #else
