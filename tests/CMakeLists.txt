@@ -9,6 +9,7 @@ set(
     0006-symbols.c
     0007-autotopic.c
     0008-reqacks.c
+    0009-mock_cluster.c
     0011-produce_batch.c
     0012-produce_consume.c
     0013-null-msgs.c
@@ -91,9 +92,13 @@ set(
     0098-consumer-txn.cpp
     0099-commit_metadata.c
     0100-thread_interceptors.cpp
+    0101-fetch-from-follower.cpp
+    0102-static_group_rebalance.c
+    0104-fetch_from_follower_mock.c
     8000-idle.cpp
     test.c
     testcpp.cpp
+    rusage.c
 )
 
 if(NOT WIN32)

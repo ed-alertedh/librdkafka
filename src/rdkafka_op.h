@@ -120,6 +120,7 @@ typedef enum {
         RD_KAFKA_OP_PURGE,           /**< Purge queues */
         RD_KAFKA_OP_CONNECT,         /**< Connect (to broker) */
         RD_KAFKA_OP_OAUTHBEARER_REFRESH, /**< Refresh OAUTHBEARER token */
+        RD_KAFKA_OP_MOCK,            /**< Mock cluster command */
         RD_KAFKA_OP__END
 } rd_kafka_op_type_t;
 
@@ -421,7 +422,40 @@ struct rd_kafka_op_s {
                 struct {
                         int flags; /**< purge_flags from rd_kafka_purge() */
                 } purge;
-	} rko_u;
+
+                /**< Mock cluster command */
+                struct {
+                        enum {
+                                RD_KAFKA_MOCK_CMD_TOPIC_SET_ERROR,
+                                RD_KAFKA_MOCK_CMD_PART_SET_LEADER,
+                                RD_KAFKA_MOCK_CMD_PART_SET_FOLLOWER,
+                                RD_KAFKA_MOCK_CMD_PART_SET_FOLLOWER_WMARKS,
+                                RD_KAFKA_MOCK_CMD_BROKER_SET_RACK
+                        } cmd;
+
+                        rd_kafka_resp_err_t err; /**< Error for:
+                                                  *    TOPIC_SET_ERROR */
+                        char *name;              /**< For:
+                                                  *    TOPIC_SET_ERROR
+                                                  *    PART_SET_FOLLOWER
+                                                  *    PART_SET_FOLLOWER_WMARKS
+                                                  *    BROKER_SET_RACK */
+                        int32_t partition;       /**< For:
+                                                  *    PART_SET_FOLLOWER
+                                                  *    PART_SET_FOLLOWER_WMARKS
+                                                  *    PART_SET_LEADER */
+                        int32_t broker_id;       /**< For:
+                                                  *    PART_SET_FOLLOWER
+                                                  *    PART_SET_LEADER
+                                                  *    BROKER_SET_RACK */
+                        int64_t lo;              /**< Low offset, for:
+                                                  *    PART_SET_FOLLOWER_WMARKS
+                                                  */
+                        int64_t hi;              /**< High offset, for:
+                                                  *    PART_SET_FOLLOWER_WMARKS
+                                                  */
+                } mock;
+        } rko_u;
 };
 
 TAILQ_HEAD(rd_kafka_op_head_s, rd_kafka_op_s);

@@ -99,6 +99,7 @@
     <ClCompile Include="..\..\tests\0006-symbols.c" />
     <ClCompile Include="..\..\tests\0007-autotopic.c" />
     <ClCompile Include="..\..\tests\0008-reqacks.c" />
+    <ClCompile Include="..\..\tests\0009-mock_cluster.c" />
     <ClCompile Include="..\..\tests\0011-produce_batch.c" />
     <ClCompile Include="..\..\tests\0012-produce_consume.c" />
     <ClCompile Include="..\..\tests\0013-null-msgs.c" />
@@ -181,9 +182,13 @@
     <ClCompile Include="..\..\tests\0098-consumer-txn.cpp" />
     <ClCompile Include="..\..\tests\0099-commit_metadata.c" />
     <ClCompile Include="..\..\tests\0100-thread_interceptors.cpp" />
+    <ClCompile Include="..\..\tests\0101-fetch-from-follower.cpp" />
+    <ClCompile Include="..\..\tests\0102-static_group_rebalance.c" />
+    <ClCompile Include="..\..\tests\0104-fetch_from_follower_mock.c" />
     <ClCompile Include="..\..\tests\8000-idle.cpp" />
     <ClCompile Include="..\..\tests\test.c" />
     <ClCompile Include="..\..\tests\testcpp.cpp" />
+    <ClCompile Include="..\..\tests\rusage.c" />
     <ClCompile Include="..\..\src\tinycthread.c" />
     <ClCompile Include="..\..\src\tinycthread_extra.c" />
     <ClCompile Include="..\..\src\rdlist.c" />

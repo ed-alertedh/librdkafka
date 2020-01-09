@@ -42,6 +42,8 @@ set(
     rdkafka_background.c
     rdkafka_idempotence.c
     rdkafka_cert.c
+    rdkafka_mock.c
+    rdkafka_mock_handlers.c
     rdlist.c
     rdlog.c
     rdmurmur2.c
@@ -308,6 +310,6 @@ install(
 )
 
 install(
-    FILES "rdkafka.h"
+    FILES "rdkafka.h" "rdkafka_mock.h"
     DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/librdkafka"
 )

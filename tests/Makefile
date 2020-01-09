@@ -4,7 +4,9 @@ OBJS	  = $(TESTSRCS_C:%.c=%.o) $(TESTSRCS_CXX:%.cpp=%.o)
 
 BIN	  = test-runner
 LIBS	 += -lrdkafka++ -lrdkafka -lstdc++
-OBJS	 += test.o testcpp.o tinycthread.o tinycthread_extra.o rdlist.o sockem.o sockem_ctrl.o
+OBJS	 += test.o rusage.o testcpp.o \
+		tinycthread.o tinycthread_extra.o rdlist.o sockem.o \
+		sockem_ctrl.o
 CFLAGS += -I../src
 CXXFLAGS += -I../src -I../src-cpp
 LDFLAGS += -rdynamic -L../src -L../src-cpp
@@ -120,13 +122,13 @@ java: .PHONY
 asan:
 	@(echo "### Running tests with AddressSanitizer")
 	(cd .. ; ./dev-conf.sh asan)
-	./broker_version_tests.py $(KAFKA_VERSION)
+	CI=true ./broker_version_tests.py $(KAFKA_VERSION)
 
 # Run test-suite with TSAN
 tsan:
 	@(echo "### Running tests with ThreadSanitizer")
 	(cd .. ; ./dev-conf.sh tsan)
-	./broker_version_tests.py $(KAFKA_VERSION)
+	CI=true ./broker_version_tests.py $(KAFKA_VERSION)
 
 # Run full test-suite with a clean release build
 pristine-full:
@@ -140,6 +142,12 @@ compat:
 	./broker_version_tests.py --rdkconf '{"args": "-Q"}' \
 		$(COMPAT_KAFKA_VERSIONS)
 
+
 # Run a full release / PR test.
 # (| is for not running suites in parallel)
 release-test: | asan tsan pristine-full compat
+
+
+# Check resource usage (requires a running cluster environment)
+rusage:
+	./run-test.sh -R bare

@@ -108,7 +108,7 @@ namespace RdKafka {
  * @remark This value should only be used during compile time,
  *         for runtime checks of version use RdKafka::version()
  */
-#define RD_KAFKA_VERSION  0x010200ff
+#define RD_KAFKA_VERSION  0x010300ff
 
 /**
  * @brief Returns the librdkafka version as integer.
@@ -279,6 +279,8 @@ enum ErrorCode {
         ERR__GAPLESS_GUARANTEE = -148,
         /** Maximum poll interval exceeded */
         ERR__MAX_POLL_EXCEEDED = -147,
+        /** Unknown broker */
+        ERR__UNKNOWN_BROKER = -146,
 
         /** End internal error codes */
 	ERR__END = -100,
@@ -314,12 +316,18 @@ enum ErrorCode {
 	ERR_OFFSET_METADATA_TOO_LARGE = 12,
 	/** Broker disconnected before response received */
 	ERR_NETWORK_EXCEPTION = 13,
-	/** Group coordinator load in progress */
-        ERR_GROUP_LOAD_IN_PROGRESS = 14,
-	 /** Group coordinator not available */
-        ERR_GROUP_COORDINATOR_NOT_AVAILABLE = 15,
-	/** Not coordinator for group */
-        ERR_NOT_COORDINATOR_FOR_GROUP = 16,
+        /** Coordinator load in progress */
+        ERR_COORDINATOR_LOAD_IN_PROGRESS = 14,
+        /** Group coordinator load in progress */
+#define ERR_GROUP_LOAD_IN_PROGRESS           ERR_COORDINATOR_LOAD_IN_PROGRESS
+        /** Coordinator not available */
+        ERR_COORDINATOR_NOT_AVAILABLE = 15,
+        /** Group coordinator not available */
+#define ERR_GROUP_COORDINATOR_NOT_AVAILABLE  ERR_COORDINATOR_NOT_AVAILABLE
+        /** Not coordinator */
+        ERR_NOT_COORDINATOR = 16,
+        /** Not coordinator for group */
+#define ERR_NOT_COORDINATOR_FOR_GROUP        ERR_NOT_COORDINATOR
 	/** Invalid topic */
         ERR_TOPIC_EXCEPTION = 17,
 	/** Message batch larger than configured server segment size */
@@ -455,6 +463,9 @@ enum ErrorCode {
         ERR_PREFERRED_LEADER_NOT_AVAILABLE = 80,
         /** Consumer group has reached maximum size */
         ERR_GROUP_MAX_SIZE_REACHED = 81,
+        /** Static consumer fenced by other consumer with same
+         * group.instance.id. */
+        ERR_FENCED_INSTANCE_ID = 82,
 };
 
 

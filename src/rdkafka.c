@@ -238,8 +238,7 @@ static void rd_kafka_log_buf (const rd_kafka_conf_t *conf,
                 rko = rd_kafka_op_new(RD_KAFKA_OP_LOG);
                 rd_kafka_op_set_prio(rko, RD_KAFKA_PRIO_MEDIUM);
                 rko->rko_u.log.level = level;
-                strncpy(rko->rko_u.log.fac, fac,
-                        sizeof(rko->rko_u.log.fac) - 1);
+                rd_strlcpy(rko->rko_u.log.fac, fac, sizeof(rko->rko_u.log.fac));
                 rko->rko_u.log.str = rd_strdup(buf);
                 rd_kafka_q_enq(rk->rk_logq, rko);
 
@@ -475,6 +474,8 @@ static const struct rd_kafka_err_desc rd_kafka_err_descs[] = {
         _ERR_DESC(RD_KAFKA_RESP_ERR__MAX_POLL_EXCEEDED,
                   "Local: Maximum application poll interval "
                   "(max.poll.interval.ms) exceeded"),
+        _ERR_DESC(RD_KAFKA_RESP_ERR__UNKNOWN_BROKER,
+                  "Local: Unknown broker"),
 
 	_ERR_DESC(RD_KAFKA_RESP_ERR_UNKNOWN,
 		  "Unknown broker error"),
@@ -506,12 +507,12 @@ static const struct rd_kafka_err_desc rd_kafka_err_descs[] = {
 		  "Broker: Offset metadata string too large"),
 	_ERR_DESC(RD_KAFKA_RESP_ERR_NETWORK_EXCEPTION,
 		  "Broker: Broker disconnected before response received"),
-        _ERR_DESC(RD_KAFKA_RESP_ERR_GROUP_LOAD_IN_PROGRESS,
-		  "Broker: Group coordinator load in progress"),
-        _ERR_DESC(RD_KAFKA_RESP_ERR_GROUP_COORDINATOR_NOT_AVAILABLE,
-		  "Broker: Group coordinator not available"),
-        _ERR_DESC(RD_KAFKA_RESP_ERR_NOT_COORDINATOR_FOR_GROUP,
-		  "Broker: Not coordinator for group"),
+        _ERR_DESC(RD_KAFKA_RESP_ERR_COORDINATOR_LOAD_IN_PROGRESS,
+		  "Broker: Coordinator load in progress"),
+        _ERR_DESC(RD_KAFKA_RESP_ERR_COORDINATOR_NOT_AVAILABLE,
+		  "Broker: Coordinator not available"),
+        _ERR_DESC(RD_KAFKA_RESP_ERR_NOT_COORDINATOR,
+		  "Broker: Not coordinator"),
         _ERR_DESC(RD_KAFKA_RESP_ERR_TOPIC_EXCEPTION,
 		  "Broker: Invalid topic"),
         _ERR_DESC(RD_KAFKA_RESP_ERR_RECORD_LIST_TOO_LARGE,
@@ -600,59 +601,62 @@ static const struct rd_kafka_err_desc rd_kafka_err_descs[] = {
         _ERR_DESC(RD_KAFKA_RESP_ERR_OPERATION_NOT_ATTEMPTED,
                   "Broker: Operation not attempted"),
         _ERR_DESC(RD_KAFKA_RESP_ERR_KAFKA_STORAGE_ERROR,
-                  "Disk error when trying to access log file on the disk"),
+                  "Broker: Disk error when trying to access log file on disk"),
         _ERR_DESC(RD_KAFKA_RESP_ERR_LOG_DIR_NOT_FOUND,
-                  "The user-specified log directory is not found "
+                  "Broker: The user-specified log directory is not found "
                   "in the broker config"),
         _ERR_DESC(RD_KAFKA_RESP_ERR_SASL_AUTHENTICATION_FAILED,
-                  "SASL Authentication failed"),
+                  "Broker: SASL Authentication failed"),
         _ERR_DESC(RD_KAFKA_RESP_ERR_UNKNOWN_PRODUCER_ID,
-                  "Unknown Producer Id"),
+                  "Broker: Unknown Producer Id"),
         _ERR_DESC(RD_KAFKA_RESP_ERR_REASSIGNMENT_IN_PROGRESS,
-                  "Partition reassignment is in progress"),
+                  "Broker: Partition reassignment is in progress"),
         _ERR_DESC(RD_KAFKA_RESP_ERR_DELEGATION_TOKEN_AUTH_DISABLED,
-                  "Delegation Token feature is not enabled"),
+                  "Broker: Delegation Token feature is not enabled"),
         _ERR_DESC(RD_KAFKA_RESP_ERR_DELEGATION_TOKEN_NOT_FOUND,
-                  "Delegation Token is not found on server"),
+                  "Broker: Delegation Token is not found on server"),
         _ERR_DESC(RD_KAFKA_RESP_ERR_DELEGATION_TOKEN_OWNER_MISMATCH,
-                  "Specified Principal is not valid Owner/Renewer"),
+                  "Broker: Specified Principal is not valid Owner/Renewer"),
         _ERR_DESC(RD_KAFKA_RESP_ERR_DELEGATION_TOKEN_REQUEST_NOT_ALLOWED,
-                  "Delegation Token requests are not allowed on "
+                  "Broker: Delegation Token requests are not allowed on "
                   "this connection"),
         _ERR_DESC(RD_KAFKA_RESP_ERR_DELEGATION_TOKEN_AUTHORIZATION_FAILED,
-                  "Delegation Token authorization failed"),
+                  "Broker: Delegation Token authorization failed"),
         _ERR_DESC(RD_KAFKA_RESP_ERR_DELEGATION_TOKEN_EXPIRED,
-                  "Delegation Token is expired"),
+                  "Broker: Delegation Token is expired"),
         _ERR_DESC(RD_KAFKA_RESP_ERR_INVALID_PRINCIPAL_TYPE,
-                  "Supplied principalType is not supported"),
+                  "Broker: Supplied principalType is not supported"),
         _ERR_DESC(RD_KAFKA_RESP_ERR_NON_EMPTY_GROUP,
-                  "The group is not empty"),
+                  "Broker: The group is not empty"),
         _ERR_DESC(RD_KAFKA_RESP_ERR_GROUP_ID_NOT_FOUND,
-                  "The group id does not exist"),
+                  "Broker: The group id does not exist"),
         _ERR_DESC(RD_KAFKA_RESP_ERR_FETCH_SESSION_ID_NOT_FOUND,
-                  "The fetch session ID was not found"),
+                  "Broker: The fetch session ID was not found"),
         _ERR_DESC(RD_KAFKA_RESP_ERR_INVALID_FETCH_SESSION_EPOCH,
-                  "The fetch session epoch is invalid"),
+                  "Broker: The fetch session epoch is invalid"),
         _ERR_DESC(RD_KAFKA_RESP_ERR_LISTENER_NOT_FOUND,
-                  "No matching listener"),
+                  "Broker: No matching listener"),
         _ERR_DESC(RD_KAFKA_RESP_ERR_TOPIC_DELETION_DISABLED,
-                  "Topic deletion is disabled"),
+                  "Broker: Topic deletion is disabled"),
         _ERR_DESC(RD_KAFKA_RESP_ERR_FENCED_LEADER_EPOCH,
-                  "Leader epoch is older than broker epoch"),
+                  "Broker: Leader epoch is older than broker epoch"),
         _ERR_DESC(RD_KAFKA_RESP_ERR_UNKNOWN_LEADER_EPOCH,
-                  "Leader epoch is newer than broker epoch"),
+                  "Broker: Leader epoch is newer than broker epoch"),
         _ERR_DESC(RD_KAFKA_RESP_ERR_UNSUPPORTED_COMPRESSION_TYPE,
-                  "Unsupported compression type"),
+                  "Broker: Unsupported compression type"),
         _ERR_DESC(RD_KAFKA_RESP_ERR_STALE_BROKER_EPOCH,
-                  "Broker epoch has changed"),
+                  "Broker: Broker epoch has changed"),
         _ERR_DESC(RD_KAFKA_RESP_ERR_OFFSET_NOT_AVAILABLE,
-                  "Leader high watermark is not caught up"),
+                  "Broker: Leader high watermark is not caught up"),
         _ERR_DESC(RD_KAFKA_RESP_ERR_MEMBER_ID_REQUIRED,
-                  "Group member needs a valid member ID"),
+                  "Broker: Group member needs a valid member ID"),
         _ERR_DESC(RD_KAFKA_RESP_ERR_PREFERRED_LEADER_NOT_AVAILABLE,
-                  "Preferred leader was not available"),
+                  "Broker: Preferred leader was not available"),
         _ERR_DESC(RD_KAFKA_RESP_ERR_GROUP_MAX_SIZE_REACHED,
-                  "Consumer group has reached maximum size"),
+                  "Broker: Consumer group has reached maximum size"),
+        _ERR_DESC(RD_KAFKA_RESP_ERR_FENCED_INSTANCE_ID,
+                  "Broker: Static consumer fenced by other consumer with same "
+                  "group.instance.id"),
 
 	_ERR_DESC(RD_KAFKA_RESP_ERR__END, NULL)
 };
@@ -796,10 +800,21 @@ int rd_kafka_set_fatal_error (rd_kafka_t *rk, rd_kafka_resp_err_t err,
 
         /* Indicate to the application that a fatal error was raised,
          * the app should use rd_kafka_fatal_error() to extract the
-         * fatal error code itself. */
-        rd_kafka_op_err(rk, RD_KAFKA_RESP_ERR__FATAL,
-                        "Fatal error: %s: %s",
-                        rd_kafka_err2str(err), rk->rk_fatal.errstr);
+         * fatal error code itself.
+         * For the high-level consumer we propagate the error as a
+         * consumer error so it is returned from consumer_poll(),
+         * while for all other client types (the producer) we propagate to
+         * the standard error handler (typically error_cb). */
+        if (rk->rk_type == RD_KAFKA_CONSUMER && rk->rk_cgrp)
+                rd_kafka_q_op_err(rk->rk_cgrp->rkcg_q,
+                                  RD_KAFKA_OP_CONSUMER_ERR,
+                                  RD_KAFKA_RESP_ERR__FATAL, 0, NULL, 0,
+                                  "Fatal error: %s: %s",
+                                  rd_kafka_err2str(err), rk->rk_fatal.errstr);
+        else
+                rd_kafka_op_err(rk, RD_KAFKA_RESP_ERR__FATAL,
+                                "Fatal error: %s: %s",
+                                rd_kafka_err2str(err), rk->rk_fatal.errstr);
 
 
         /* Purge producer queues, but not in-flight since we'll
@@ -930,8 +945,9 @@ static void rd_kafka_destroy_app (rd_kafka_t *rk, int flags) {
                 NULL
         };
 
-        /* _F_IMMEDIATE also sets .._NO_CONSUMER_CLOSE */
-        if (flags & RD_KAFKA_DESTROY_F_IMMEDIATE)
+        /* Fatal errors and _F_IMMEDIATE also sets .._NO_CONSUMER_CLOSE */
+        if (flags & RD_KAFKA_DESTROY_F_IMMEDIATE ||
+            rd_kafka_fatal_error_code(rk))
                 flags |= RD_KAFKA_DESTROY_F_NO_CONSUMER_CLOSE;
 
         rd_flags2str(flags_str, sizeof(flags_str),
@@ -1148,6 +1164,10 @@ static void rd_kafka_destroy_internal (rd_kafka_t *rk) {
         }
 
         rd_list_destroy(&wait_thrds);
+
+        /* Destroy mock cluster */
+        if (rk->rk_mock.cluster)
+                rd_kafka_mock_cluster_destroy(rk->rk_mock.cluster);
 }
 
 /**
@@ -1243,14 +1263,14 @@ static RD_INLINE void rd_kafka_stats_emit_toppar (struct _stats_emit *st,
         int64_t end_offset;
         int64_t consumer_lag = -1;
         struct offset_stats offs;
-        int32_t leader_nodeid = -1;
+        int32_t broker_id = -1;
 
         rd_kafka_toppar_lock(rktp);
 
-        if (rktp->rktp_leader) {
-                rd_kafka_broker_lock(rktp->rktp_leader);
-                leader_nodeid = rktp->rktp_leader->rkb_nodeid;
-                rd_kafka_broker_unlock(rktp->rktp_leader);
+        if (rktp->rktp_broker) {
+                rd_kafka_broker_lock(rktp->rktp_broker);
+                broker_id = rktp->rktp_broker->rkb_nodeid;
+                rd_kafka_broker_unlock(rktp->rktp_broker);
         }
 
         /* Grab a copy of the latest finalized offset stats */
@@ -1278,6 +1298,7 @@ static RD_INLINE void rd_kafka_stats_emit_toppar (struct _stats_emit *st,
 
 	_st_printf("%s\"%"PRId32"\": { "
 		   "\"partition\":%"PRId32", "
+		   "\"broker\":%"PRId32", "
 		   "\"leader\":%"PRId32", "
 		   "\"desired\":%s, "
 		   "\"unknown\":%s, "
@@ -1313,7 +1334,8 @@ static RD_INLINE void rd_kafka_stats_emit_toppar (struct _stats_emit *st,
 		   first ? "" : ", ",
 		   rktp->rktp_partition,
 		   rktp->rktp_partition,
-                   leader_nodeid,
+                   broker_id,
+                   rktp->rktp_leader_id,
 		   (rktp->rktp_flags&RD_KAFKA_TOPPAR_F_DESIRED)?"true":"false",
 		   (rktp->rktp_flags&RD_KAFKA_TOPPAR_F_UNKNOWN)?"true":"false",
                    rd_kafka_msgq_len(&rktp->rktp_msgq),
@@ -1369,7 +1391,7 @@ static void rd_kafka_stats_emit_broker_reqs (struct _stats_emit *st,
                         [RD_KAFKAP_Fetch] = rd_true,
                         [RD_KAFKAP_OffsetCommit] = rd_true,
                         [RD_KAFKAP_OffsetFetch] = rd_true,
-                        [RD_KAFKAP_GroupCoordinator] = rd_true,
+                        [RD_KAFKAP_FindCoordinator] = rd_true,
                         [RD_KAFKAP_JoinGroup] = rd_true,
                         [RD_KAFKAP_Heartbeat] = rd_true,
                         [RD_KAFKAP_LeaveGroup] = rd_true,
@@ -2071,6 +2093,33 @@ rd_kafka_t *rd_kafka_new (rd_kafka_type_t type, rd_kafka_conf_t *app_conf,
                 ret_errno = EINVAL;
                 goto fail;
         }
+
+        /* Create Mock cluster */
+        if (rk->rk_conf.mock.broker_cnt > 0) {
+                rk->rk_mock.cluster = rd_kafka_mock_cluster_new(
+                        rk, rk->rk_conf.mock.broker_cnt);
+
+                if (!rk->rk_mock.cluster) {
+                        rd_snprintf(errstr, errstr_size,
+                                    "Failed to create mock cluster, see logs");
+                        ret_err = RD_KAFKA_RESP_ERR__FAIL;
+                        ret_errno = EINVAL;
+                        goto fail;
+                }
+
+                rd_kafka_log(rk, LOG_NOTICE, "MOCK", "Mock cluster enabled: "
+                             "original bootstrap.servers ignored and replaced");
+
+                /* Overwrite bootstrap.servers and connection settings */
+                if (rd_kafka_conf_set(&rk->rk_conf, "bootstrap.servers",
+                                      rd_kafka_mock_cluster_bootstraps(
+                                              rk->rk_mock.cluster),
+                                      NULL, 0) != RD_KAFKA_CONF_OK)
+                        rd_assert(!"failed to replace mock bootstrap.servers");
+
+                rk->rk_conf.security_protocol = RD_KAFKA_PROTO_PLAINTEXT;
+        }
+
 
         if (rk->rk_conf.security_protocol == RD_KAFKA_PROTO_SASL_SSL ||
             rk->rk_conf.security_protocol == RD_KAFKA_PROTO_SASL_PLAINTEXT) {
@@ -2845,6 +2894,14 @@ rd_kafka_resp_err_t rd_kafka_consumer_close (rd_kafka_t *rk) {
         if (!(rkcg = rd_kafka_cgrp_get(rk)))
                 return RD_KAFKA_RESP_ERR__UNKNOWN_GROUP;
 
+        /* If a fatal error has been raised and this is an
+         * explicit consumer_close() from the application we return
+         * a fatal error. Otherwise let the "silent" no_consumer_close
+         * logic be performed to clean up properly. */
+        if (rd_kafka_fatal_error_code(rk) &&
+            !rd_kafka_destroy_flags_no_consumer_close(rk))
+                return RD_KAFKA_RESP_ERR__FATAL;
+
         rd_kafka_dbg(rk, CONSUMER, "CLOSE", "Closing consumer");
 
 	/* Redirect cgrp queue to our temporary queue to make sure
@@ -3565,12 +3622,15 @@ int rd_kafka_queue_poll_callback (rd_kafka_queue_t *rkqu, int timeout_ms) {
 static void rd_kafka_toppar_dump (FILE *fp, const char *indent,
 				  rd_kafka_toppar_t *rktp) {
 
-	fprintf(fp, "%s%.*s [%"PRId32"] leader %s\n",
+	fprintf(fp, "%s%.*s [%"PRId32"] broker %s, "
+                "leader_id %s\n",
 		indent,
 		RD_KAFKAP_STR_PR(rktp->rktp_rkt->rkt_topic),
 		rktp->rktp_partition,
-		rktp->rktp_leader ?
-		rktp->rktp_leader->rkb_name : "none");
+		rktp->rktp_broker ?
+		rktp->rktp_broker->rkb_name : "none",
+                rktp->rktp_leader ?
+                rktp->rktp_leader->rkb_name : "none");
 	fprintf(fp,
 		"%s refcnt %i\n"
 		"%s msgq:      %i messages\n"
@@ -4157,7 +4217,7 @@ static void rd_kafka_ListGroups_resp_cb (rd_kafka_t *rk,
         struct list_groups_state *state;
         const int log_decode_errors = LOG_ERR;
         int16_t ErrorCode;
-        char **grps;
+        char **grps = NULL;
         int cnt, grpcnt, i = 0;
 
         if (err == RD_KAFKA_RESP_ERR__DESTROY) {
@@ -4228,6 +4288,8 @@ err:
         return;
 
  err_parse:
+        if (grps)
+                rd_free(grps);
         state->err = reply->rkbuf_err;
 }
 
@@ -4271,17 +4333,14 @@ rd_kafka_list_groups (rd_kafka_t *rk, const char *group,
                         rd_kafka_broker_unlock(rkb);
                         continue;
                 }
-
-                state.wait_cnt++;
-                rd_kafka_ListGroupsRequest(rkb,
-                                           RD_KAFKA_REPLYQ(state.q, 0),
-					   rd_kafka_ListGroups_resp_cb,
-                                           &state);
-
-                rkb_cnt++;
-
                 rd_kafka_broker_unlock(rkb);
 
+                state.wait_cnt++;
+                rkb_cnt++;
+                rd_kafka_ListGroupsRequest(rkb,
+                                           RD_KAFKA_REPLYQ(state.q, 0),
+                                           rd_kafka_ListGroups_resp_cb,
+                                           &state);
         }
         rd_kafka_rdunlock(rk);
 

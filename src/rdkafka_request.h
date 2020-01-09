@@ -54,11 +54,13 @@ int rd_kafka_err_action (rd_kafka_broker_t *rkb,
 			 const rd_kafka_buf_t *request, ...);
 
 
-void rd_kafka_GroupCoordinatorRequest (rd_kafka_broker_t *rkb,
-                                       const rd_kafkap_str_t *cgrp,
-                                       rd_kafka_replyq_t replyq,
-                                       rd_kafka_resp_cb_t *resp_cb,
-                                       void *opaque);
+rd_kafka_resp_err_t
+rd_kafka_FindCoordinatorRequest (rd_kafka_broker_t *rkb,
+                                 rd_kafka_coordtype_t coordtype,
+                                 const char *coordkey,
+                                 rd_kafka_replyq_t replyq,
+                                 rd_kafka_resp_cb_t *resp_cb,
+                                 void *opaque);
 
 rd_kafka_resp_err_t rd_kafka_handle_Offset (rd_kafka_t *rk,
 					    rd_kafka_broker_t *rkb,
@@ -109,7 +111,6 @@ rd_kafka_handle_OffsetCommit (rd_kafka_t *rk,
 			      rd_kafka_topic_partition_list_t *offsets);
 int rd_kafka_OffsetCommitRequest (rd_kafka_broker_t *rkb,
 				  rd_kafka_cgrp_t *rkcg,
-				  int16_t api_version,
 				  rd_kafka_topic_partition_list_t *offsets,
 				  rd_kafka_replyq_t replyq,
 				  rd_kafka_resp_cb_t *resp_cb,
@@ -120,6 +121,7 @@ int rd_kafka_OffsetCommitRequest (rd_kafka_broker_t *rkb,
 void rd_kafka_JoinGroupRequest (rd_kafka_broker_t *rkb,
                                 const rd_kafkap_str_t *group_id,
                                 const rd_kafkap_str_t *member_id,
+                                const rd_kafkap_str_t *group_instance_id,
                                 const rd_kafkap_str_t *protocol_type,
 				const rd_list_t *topics,
                                 rd_kafka_replyq_t replyq,
@@ -130,6 +132,7 @@ void rd_kafka_JoinGroupRequest (rd_kafka_broker_t *rkb,
 void rd_kafka_LeaveGroupRequest (rd_kafka_broker_t *rkb,
                                  const rd_kafkap_str_t *group_id,
                                  const rd_kafkap_str_t *member_id,
+                                 const rd_kafkap_str_t *group_instance_id,
                                  rd_kafka_replyq_t replyq,
                                  rd_kafka_resp_cb_t *resp_cb,
                                  void *opaque);
@@ -144,6 +147,7 @@ void rd_kafka_SyncGroupRequest (rd_kafka_broker_t *rkb,
                                 const rd_kafkap_str_t *group_id,
                                 int32_t generation_id,
                                 const rd_kafkap_str_t *member_id,
+                                const rd_kafkap_str_t *group_instance_id,
                                 const rd_kafka_group_member_t
                                 *assignments,
                                 int assignment_cnt,
@@ -173,6 +177,7 @@ void rd_kafka_HeartbeatRequest (rd_kafka_broker_t *rkb,
                                 const rd_kafkap_str_t *group_id,
                                 int32_t generation_id,
                                 const rd_kafkap_str_t *member_id,
+                                const rd_kafkap_str_t *group_instance_id,
                                 rd_kafka_replyq_t replyq,
                                 rd_kafka_resp_cb_t *resp_cb,
                                 void *opaque);

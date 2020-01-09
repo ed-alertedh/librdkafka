@@ -271,9 +271,14 @@ static const struct rd_kafka_property rd_kafka_properties[] = {
 	{ _RK_GLOBAL|_RK_HIGH, "bootstrap.servers", _RK_C_ALIAS, 0,
 	  "See metadata.broker.list",
 	  .sdef = "metadata.broker.list" },
-	{ _RK_GLOBAL|_RK_MED, "message.max.bytes", _RK_C_INT, _RK(max_msg_size),
-	  "Maximum Kafka protocol request message size.",
-	  1000, 1000000000, 1000000 },
+        { _RK_GLOBAL|_RK_MED, "message.max.bytes", _RK_C_INT, _RK(max_msg_size),
+          "Maximum Kafka protocol request message size. "
+          "Due to differing framing overhead between protocol versions the "
+          "producer is unable to reliably enforce a strict max message limit "
+          "at produce time and may exceed the maximum size by one message in "
+          "protocol ProduceRequests, the broker will enforce the the topic's "
+          "`max.message.bytes` limit (see Apache Kafka documentation).",
+          1000, 1000000000, 1000000 },
 	{ _RK_GLOBAL, "message.copy.max.bytes", _RK_C_INT,
 	  _RK(msg_copy_max_size),
 	  "Maximum size for message to be copied to buffer. "
@@ -362,6 +367,7 @@ static const struct rd_kafka_property rd_kafka_properties[] = {
                         { RD_KAFKA_DBG_CONSUMER, "consumer" },
                         { RD_KAFKA_DBG_ADMIN,    "admin" },
                         { RD_KAFKA_DBG_EOS,      "eos" },
+                        { RD_KAFKA_DBG_MOCK,     "mock" },
 			{ RD_KAFKA_DBG_ALL,      "all" }
 		} },
 	{ _RK_GLOBAL, "socket.timeout.ms", _RK_C_INT, _RK(socket_timeout_ms),
@@ -788,7 +794,7 @@ static const struct rd_kafka_property rd_kafka_properties[] = {
           "`principalClaimName=azp principal=admin scopeClaimName=roles "
           "scope=role1,role2 lifeSeconds=600`. In addition, SASL extensions "
           "can be communicated to the broker via "
-          "`extension_<extensionname>=value`. For example: "
+          "`extension_NAME=value`. For example: "
           "`principal=admin extension_traceId=123`" },
         { _RK_GLOBAL, "enable.sasl.oauthbearer.unsecure.jwt", _RK_C_BOOL,
           _RK(sasl.enable_oauthbearer_unsecure_jwt),
@@ -829,6 +835,14 @@ static const struct rd_kafka_property rd_kafka_properties[] = {
           .dtor = rd_kafka_conf_interceptor_dtor,
           .copy = rd_kafka_conf_interceptor_copy },
 
+        /* Test mocks. */
+        { _RK_GLOBAL|_RK_HIDDEN, "test.mock.num.brokers", _RK_C_INT,
+          _RK(mock.broker_cnt),
+          "Number of mock brokers to create. "
+          "This will automatically overwrite `bootstrap.servers` with the "
+          "mock broker list.",
+          0, 10000, 0 },
+
         /* Unit test interfaces.
          * These are not part of the public API and may change at any time.
          * Only to be used by the librdkafka tests. */
@@ -843,6 +857,16 @@ static const struct rd_kafka_property rd_kafka_properties[] = {
           _RK(group_id_str),
           "Client group id string. All clients sharing the same group.id "
           "belong to the same group." },
+        { _RK_GLOBAL|_RK_CGRP|_RK_MED|_RK_HIDDEN|_RK_EXPERIMENTAL,
+          "group.instance.id", _RK_C_STR,
+          _RK(group_instance_id),
+          "Enable static group membership. "
+          "Static group members are able to leave and rejoin a group "
+          "within the configured `session.timeout.ms` without prompting a "
+          "group rebalance. This should be used in combination with a larger "
+          "`session.timeout.ms` to avoid group rebalances caused by transient "
+          "unavailability (e.g. process restarts). "
+          "Requires broker version >= 2.3.0."},
         { _RK_GLOBAL|_RK_CGRP|_RK_MED, "partition.assignment.strategy",
           _RK_C_STR,
           _RK(partition_assignment_strategy),
@@ -1022,6 +1046,12 @@ static const struct rd_kafka_property rd_kafka_properties[] = {
           "on-disk corruption to the messages occurred. This check comes "
           "at slightly increased CPU usage.",
           0, 1, 0 },
+        { _RK_GLOBAL, "client.rack", _RK_C_KSTR,
+          _RK(client_rack),
+          "A rack identifier for this client. This can be any string value "
+          "which indicates where this client is physically located. It "
+          "corresponds with the broker config `broker.rack`.",
+          .sdef =  "" },
 
         /* Global producer properties */
         { _RK_GLOBAL|_RK_PRODUCER|_RK_HIGH, "enable.idempotence", _RK_C_BOOL,
@@ -2878,8 +2908,7 @@ void rd_kafka_conf_properties_show (FILE *fp) {
                 fprintf(fp, "%3s | ",
                         (!(prop->scope & _RK_PRODUCER) ==
                          !(prop->scope & _RK_CONSUMER) ? " * " :
-                         ((prop->scope & _RK_PRODUCER) ? " P " :
-                          (prop->scope & _RK_CONSUMER) ? " C " : "")));
+                         ((prop->scope & _RK_PRODUCER) ? " P " : " C ")));
 
 		switch (prop->type)
 		{
@@ -3088,6 +3117,7 @@ rd_kafka_confval_set_type (rd_kafka_confval_t *confval,
                                             confval->name);
                                 return RD_KAFKA_RESP_ERR__INVALID_TYPE;
                         }
+                        break;
                 default:
                         rd_snprintf(errstr, errstr_size,
                                     "Invalid value type for \"%s\": "
@@ -3448,6 +3478,26 @@ int rd_kafka_conf_warn (rd_kafka_t *rk) {
                                      rk->rk_conf.fetch_wait_max_ms,
                                      rk->rk_conf.socket_timeout_ms);
         }
+
+        if (rd_kafka_conf_is_modified(&rk->rk_conf, "sasl.mechanisms") &&
+            !(rk->rk_conf.security_protocol == RD_KAFKA_PROTO_SASL_SSL ||
+              rk->rk_conf.security_protocol == RD_KAFKA_PROTO_SASL_PLAINTEXT)) {
+                rd_kafka_log(rk, LOG_WARNING, "CONFWARN",
+                             "Configuration property `sasl.mechanism` set to "
+                             "`%s` but `security.protocol` is not configured "
+                             "for SASL: recommend setting "
+                             "`security.protocol` to SASL_SSL or "
+                             "SASL_PLAINTEXT",
+                             rk->rk_conf.sasl.mechanisms);
+        }
+
+        if (rd_kafka_conf_is_modified(&rk->rk_conf, "sasl.username") &&
+            !(!strncmp(rk->rk_conf.sasl.mechanisms, "SCRAM", 5) ||
+              !strcmp(rk->rk_conf.sasl.mechanisms, "PLAIN")))
+                rd_kafka_log(rk, LOG_WARNING, "CONFWARN",
+                             "Configuration property `sasl.username` only "
+                             "applies when `sasl.mechanism` is set to "
+                             "PLAIN or SCRAM-SHA-..");
 
         return cnt;
 }

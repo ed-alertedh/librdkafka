@@ -107,7 +107,7 @@ rd_kafka_msgset_writer_select_MsgVersion (rd_kafka_msgset_writer_t *msetw) {
                 int feature;
                 int16_t ApiVersion;
         } compr_req[RD_KAFKA_COMPRESSION_NUM] = {
-                [RD_KAFKA_COMPRESSION_LZ4] = { RD_KAFKA_FEATURE_LZ4, 3 },
+                [RD_KAFKA_COMPRESSION_LZ4] = { RD_KAFKA_FEATURE_LZ4, 0 },
 #if WITH_ZSTD
                 [RD_KAFKA_COMPRESSION_ZSTD] = { RD_KAFKA_FEATURE_ZSTD, 7 },
 #endif
@@ -848,10 +848,19 @@ rd_kafka_msgset_writer_write_msgq (rd_kafka_msgset_writer_t *msetw,
                         break;
                 }
 
+                /* Check if there is enough space in the current messageset
+                 * to add this message.
+                 * Since calculating the total size of a request at produce()
+                 * time is tricky (we don't know the protocol version or
+                 * MsgVersion that will be used), we allow a messageset to
+                 * overshoot the message.max.bytes limit by one message to
+                 * avoid getting stuck here.
+                 * The actual messageset size is enforced by the broker. */
                 if (unlikely(msgcnt == msetw->msetw_msgcntmax ||
-                             len + rd_kafka_msg_wire_size(rkm, msetw->
-                                                          msetw_MsgVersion) >
-                             max_msg_size)) {
+                             (msgcnt > 0 &&
+                              len + rd_kafka_msg_wire_size(rkm, msetw->
+                                                           msetw_MsgVersion) >
+                              max_msg_size))) {
                         rd_rkb_dbg(rkb, MSG, "PRODUCE",
                                    "%.*s [%"PRId32"]: "
                                    "No more space in current MessageSet "
@@ -886,7 +895,6 @@ rd_kafka_msgset_writer_write_msgq (rd_kafka_msgset_writer_t *msetw,
                 len += rd_kafka_msgset_writer_write_msg(msetw, rkm, msgcnt, 0,
                                                         NULL);
 
-                rd_dassert(len <= max_msg_size);
                 msgcnt++;
 
         } while ((rkm = TAILQ_FIRST(&rkmq->rkmq_msgs)));
@@ -1355,8 +1363,10 @@ rd_kafka_msgset_writer_finalize (rd_kafka_msgset_writer_t *msetw,
         msetw->msetw_rkbuf->rkbuf_u.Produce.batch.pid = msetw->msetw_pid;
 
         /* Compress the message set */
-        if (msetw->msetw_compression)
-                rd_kafka_msgset_writer_compress(msetw, &len);
+        if (msetw->msetw_compression) {
+                if (rd_kafka_msgset_writer_compress(msetw, &len) == -1)
+                        msetw->msetw_compression = 0;
+        }
 
         msetw->msetw_messages_len = len;
 
@@ -1370,13 +1380,16 @@ rd_kafka_msgset_writer_finalize (rd_kafka_msgset_writer_t *msetw,
                    "%s [%"PRId32"]: "
                    "Produce MessageSet with %i message(s) (%"PRIusz" bytes, "
                    "ApiVersion %d, MsgVersion %d, MsgId %"PRIu64", "
-                   "BaseSeq %"PRId32", %s)",
+                   "BaseSeq %"PRId32", %s, %s)",
                    rktp->rktp_rkt->rkt_topic->str, rktp->rktp_partition,
                    cnt, msetw->msetw_MessageSetSize,
                    msetw->msetw_ApiVersion, msetw->msetw_MsgVersion,
                    msetw->msetw_batch->first_msgid,
                    msetw->msetw_batch->first_seq,
-                   rd_kafka_pid2str(msetw->msetw_pid));
+                   rd_kafka_pid2str(msetw->msetw_pid),
+                   msetw->msetw_compression ?
+                   rd_kafka_compression2str(msetw->msetw_compression) :
+                   "uncompressed");
 
         rd_kafka_msgq_verify_order(rktp, &msetw->msetw_batch->msgq,
                                    msetw->msetw_batch->first_msgid, rd_false);

@@ -99,7 +99,7 @@ typedef RD_SHARED_PTR_TYPE(, struct rd_kafka_itopic_s) shptr_rd_kafka_itopic_t;
 #include "rdkafka_timer.h"
 #include "rdkafka_assignor.h"
 #include "rdkafka_metadata.h"
-
+#include "rdkafka_mock.h"
 
 /**
  * Protocol level sanity
@@ -373,6 +373,11 @@ struct rd_kafka_s {
                 void *handle; /**< Provider-specific handle struct pointer.
                                *   Typically assigned in provider's .init() */
         } rk_sasl;
+
+        /* Test mocks */
+        struct {
+                rd_kafka_mock_cluster_t *cluster; /**< Mock cluster */
+        } rk_mock;
 };
 
 #define rd_kafka_wrlock(rk)    rwlock_wrlock(&(rk)->rk_lock)
@@ -570,7 +575,8 @@ const char *rd_kafka_purge_flags2str (int flags);
 #define RD_KAFKA_DBG_CONSUMER       0x2000
 #define RD_KAFKA_DBG_ADMIN          0x4000
 #define RD_KAFKA_DBG_EOS            0x8000
-#define RD_KAFKA_DBG_ALL            0xffff
+#define RD_KAFKA_DBG_MOCK           0x10000
+#define RD_KAFKA_DBG_ALL            0xfffff
 #define RD_KAFKA_DBG_NONE           0x0
 
 void rd_kafka_log0(const rd_kafka_conf_t *conf,
@@ -598,8 +604,7 @@ void rd_kafka_log0(const rd_kafka_conf_t *conf,
 #define rd_rkb_log(rkb,level,fac,...) do {				\
 		char _logname[RD_KAFKA_NODENAME_SIZE];			\
                 mtx_lock(&(rkb)->rkb_logname_lock);                     \
-		strncpy(_logname, rkb->rkb_logname, sizeof(_logname)-1); \
-		_logname[RD_KAFKA_NODENAME_SIZE-1] = '\0';		\
+                rd_strlcpy(_logname, rkb->rkb_logname, sizeof(_logname)); \
                 mtx_unlock(&(rkb)->rkb_logname_lock);                   \
 		rd_kafka_log0(&(rkb)->rkb_rk->rk_conf, \
                               (rkb)->rkb_rk, _logname,                  \
@@ -640,8 +645,15 @@ int rd_kafka_set_fatal_error (rd_kafka_t *rk, rd_kafka_resp_err_t err,
 
 static RD_INLINE RD_UNUSED rd_kafka_resp_err_t
 rd_kafka_fatal_error_code (rd_kafka_t *rk) {
-        return rk->rk_conf.eos.idempotence &&
-                rd_atomic32_get(&rk->rk_fatal.err);
+        /* This is an optimization to avoid an atomic read which are costly
+         * on some platforms:
+         * Fatal errors are currently only raised by the idempotent producer
+         * and static consumers (group.instance.id). */
+        if ((rk->rk_type == RD_KAFKA_PRODUCER && rk->rk_conf.eos.idempotence) ||
+            (rk->rk_type == RD_KAFKA_CONSUMER && rk->rk_conf.group_instance_id))
+                return rd_atomic32_get(&rk->rk_fatal.err);
+
+        return RD_KAFKA_RESP_ERR_NO_ERROR;
 }
 
 

@@ -41,7 +41,13 @@
 #include <time.h>
 #include <ctype.h>
 
+#if HAVE_GETRUSAGE
+#include <sys/time.h>
+#include <sys/resource.h>
+#endif
+
 #include "rdkafka.h"
+#include "rdkafka_mock.h"
 #include "tinycthread.h"
 #include "rdlist.h"
 
@@ -65,6 +71,9 @@ extern char test_mode[64];
 extern RD_TLS struct test *test_curr;
 extern int test_assert_on_fail;
 extern int tests_running_cnt;
+extern int test_concurrent_max;
+extern int test_rusage;
+extern double test_rusage_cpu_calibration;
 extern double test_timeout_multiplier;
 extern int  test_session_timeout_ms; /* Group session timeout */
 extern int  test_flags;
@@ -76,6 +85,15 @@ extern mtx_t test_mtx;
 #define TEST_LOCK()   mtx_lock(&test_mtx)
 #define TEST_UNLOCK() mtx_unlock(&test_mtx)
 
+
+/** @struct Resource usage thresholds */
+struct rusage_thres {
+        double ucpu;  /**< Max User CPU in percentage */
+        double scpu;  /**< Max Sys CPU in percentage */
+        double rss;   /**< Max RSS (memory) increase in MB */
+        int    ctxsw; /**< Max number of voluntary context switches, i.e.
+                       *   syscalls. */
+};
 
 typedef enum {
         TEST_NOT_STARTED,
@@ -131,6 +149,12 @@ struct test {
 #endif
         int (*is_fatal_cb) (rd_kafka_t *rk, rd_kafka_resp_err_t err,
                             const char *reason);
+
+        /**< Resource usage thresholds */
+        struct rusage_thres rusage_thres;  /**< Usage thresholds */
+#if HAVE_GETRUSAGE
+        struct rusage rusage; /**< Monitored process CPU/mem usage */
+#endif
 };
 
 
@@ -451,6 +475,10 @@ void test_produce_msgs_rate (rd_kafka_t *rk, rd_kafka_topic_t *rkt,
 rd_kafka_resp_err_t test_produce_sync (rd_kafka_t *rk, rd_kafka_topic_t *rkt,
                                        uint64_t testid, int32_t partition);
 
+void test_produce_msgs_easy_v (const char *topic, int32_t partition,
+                               uint64_t testid,
+                               int msg_base, int cnt, size_t size, ...);
+
 rd_kafka_t *test_create_consumer (const char *group_id,
 				  void (*rebalance_cb) (
 					  rd_kafka_t *rk,
@@ -500,14 +528,20 @@ test_consume_msgs_easy (const char *group_id, const char *topic,
 
 void test_consumer_poll_no_msgs (const char *what, rd_kafka_t *rk,
 				 uint64_t testid, int timeout_ms);
+void test_consumer_poll_expect_err (rd_kafka_t *rk, uint64_t testid,
+                                    int timeout_ms, rd_kafka_resp_err_t err);
 int test_consumer_poll_once (rd_kafka_t *rk, test_msgver_t *mv, int timeout_ms);
 int test_consumer_poll (const char *what, rd_kafka_t *rk, uint64_t testid,
                         int exp_eof_cnt, int exp_msg_base, int exp_cnt,
 			test_msgver_t *mv);
 
+
 void test_consumer_assign (const char *what, rd_kafka_t *rk,
 			   rd_kafka_topic_partition_list_t *parts);
 void test_consumer_unassign (const char *what, rd_kafka_t *rk);
+void test_consumer_assign_partition (const char *what, rd_kafka_t *rk,
+                                     const char *topic, int32_t partition,
+                                     int64_t offset);
 
 void test_consumer_close (rd_kafka_t *rk);
 
@@ -611,5 +645,20 @@ test_AlterConfigs_simple (rd_kafka_t *rk,
                           const char **configs, size_t config_cnt);
 
 rd_kafka_resp_err_t test_delete_all_test_topics (int timeout_ms);
+
+
+void test_mock_cluster_destroy (rd_kafka_mock_cluster_t *mcluster);
+rd_kafka_mock_cluster_t *test_mock_cluster_new (int broker_cnt,
+                                                const char **bootstraps);
+
+
+/**
+ * @name rusage.c
+ * @{
+ */
+void test_rusage_start (struct test *test);
+int test_rusage_stop (struct test *test, double duration);
+
+/**@}*/
 
 #endif /* _TEST_H_ */

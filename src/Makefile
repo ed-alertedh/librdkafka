@@ -48,9 +48,10 @@ SRCS=		rdkafka.c rdkafka_broker.c rdkafka_msg.c rdkafka_topic.c \
 		rdkafka_header.c rdkafka_admin.c rdkafka_aux.c \
 		rdkafka_background.c rdkafka_idempotence.c rdkafka_cert.c \
 		rdvarint.c rdbuf.c rdunittest.c \
+		rdkafka_mock.c rdkafka_mock_handlers.c \
 		$(SRCS_y)
 
-HDRS=		rdkafka.h
+HDRS=		rdkafka.h rdkafka_mock.h
 
 OBJS=		$(SRCS:.c=.o)
 

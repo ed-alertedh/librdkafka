@@ -34,7 +34,7 @@ mkl_toggle_option "Development" ENABLE_REFCNT_DEBUG "--enable-refcnt-debug" "Ena
 
 mkl_toggle_option "Development" ENABLE_SHAREDPTR_DEBUG "--enable-sharedptr-debug" "Enable sharedptr debugging" "n"
 
-mkl_toggle_option "Feature" ENABLE_LZ4_EXT "--enable-lz4-ext" "Enable external LZ4 library support" "y"
+mkl_toggle_option "Feature" ENABLE_LZ4_EXT "--enable-lz4-ext" "Enable external LZ4 library support (builtin version 1.9.2)" "y"
 mkl_toggle_option "Feature" ENABLE_LZ4_EXT "--enable-lz4" "Deprecated: alias for --enable-lz4-ext" "y"
 
 # librdkafka with TSAN won't work with glibc C11 threads on Ubuntu 19.04.
@@ -204,6 +204,16 @@ int foo (void) {
    return strndup(\"hi\", 2) ? 0 : 1;
 }"
 
+    # Check if strlcpy() is available
+    mkl_compile_check "strlcpy" "HAVE_STRLCPY" disable CC "" \
+"
+#define _DARWIN_C_SOURCE
+#include <string.h>
+int foo (void) {
+    char dest[4];
+   return strlcpy(dest, \"something\", sizeof(dest));
+}"
+
     # Check if strerror_r() is available.
     # The check for GNU vs XSI is done in rdposix.h since
     # we can't rely on all defines to be set here (_GNU_SOURCE).
@@ -260,5 +270,25 @@ void foo (void) {
 	mkl_compile_check valgrind WITH_VALGRIND disable CC "" \
 			  "#include <valgrind/memcheck.h>"
     fi
+
+    # getrusage() is used by the test framework
+    mkl_compile_check "getrusage" "HAVE_GETRUSAGE" disable CC "" \
+'
+#include <stdio.h>
+#include <sys/time.h>
+#include <sys/resource.h>
+
+
+void foo (void) {
+  struct rusage ru;
+  if (getrusage(RUSAGE_SELF, &ru) == -1)
+    return;
+  printf("ut %ld, st %ld, maxrss %ld, nvcsw %ld\n",
+         (long int)ru.ru_utime.tv_usec,
+         (long int)ru.ru_stime.tv_usec,
+         (long int)ru.ru_maxrss,
+         (long int)ru.ru_nvcsw);
+}'
+
 }
 

@@ -148,7 +148,7 @@ typedef SSIZE_T ssize_t;
  * @remark This value should only be used during compile time,
  *         for runtime checks of version use rd_kafka_version()
  */
-#define RD_KAFKA_VERSION  0x010200ff
+#define RD_KAFKA_VERSION  0x010300ff
 
 /**
  * @brief Returns the librdkafka version as integer.
@@ -223,7 +223,7 @@ const char *rd_kafka_get_debug_contexts(void);
  *             Use rd_kafka_get_debug_contexts() instead.
  */
 #define RD_KAFKA_DEBUG_CONTEXTS \
-        "all,generic,broker,topic,metadata,feature,queue,msg,protocol,cgrp,security,fetch,interceptor,plugin,consumer,admin,eos"
+        "all,generic,broker,topic,metadata,feature,queue,msg,protocol,cgrp,security,fetch,interceptor,plugin,consumer,admin,eos,mock"
 
 
 /* @cond NO_DOC */
@@ -363,6 +363,8 @@ typedef enum {
         RD_KAFKA_RESP_ERR__GAPLESS_GUARANTEE = -148,
         /** Maximum poll interval exceeded */
         RD_KAFKA_RESP_ERR__MAX_POLL_EXCEEDED = -147,
+        /** Unknown broker */
+        RD_KAFKA_RESP_ERR__UNKNOWN_BROKER = -146,
 
 	/** End internal error codes */
 	RD_KAFKA_RESP_ERR__END = -100,
@@ -398,12 +400,21 @@ typedef enum {
 	RD_KAFKA_RESP_ERR_OFFSET_METADATA_TOO_LARGE = 12,
 	/** Broker disconnected before response received */
 	RD_KAFKA_RESP_ERR_NETWORK_EXCEPTION = 13,
-	/** Group coordinator load in progress */
-        RD_KAFKA_RESP_ERR_GROUP_LOAD_IN_PROGRESS = 14,
-	 /** Group coordinator not available */
-        RD_KAFKA_RESP_ERR_GROUP_COORDINATOR_NOT_AVAILABLE = 15,
-	/** Not coordinator for group */
-        RD_KAFKA_RESP_ERR_NOT_COORDINATOR_FOR_GROUP = 16,
+        /** Coordinator load in progress */
+        RD_KAFKA_RESP_ERR_COORDINATOR_LOAD_IN_PROGRESS = 14,
+        /** Group coordinator load in progress */
+#define RD_KAFKA_RESP_ERR_GROUP_LOAD_IN_PROGRESS        \
+        RD_KAFKA_RESP_ERR_COORDINATOR_LOAD_IN_PROGRESS
+        /** Coordinator not available */
+        RD_KAFKA_RESP_ERR_COORDINATOR_NOT_AVAILABLE = 15,
+        /** Group coordinator not available */
+#define RD_KAFKA_RESP_ERR_GROUP_COORDINATOR_NOT_AVAILABLE       \
+        RD_KAFKA_RESP_ERR_COORDINATOR_NOT_AVAILABLE
+        /** Not coordinator */
+        RD_KAFKA_RESP_ERR_NOT_COORDINATOR = 16,
+        /** Not coordinator for group */
+#define RD_KAFKA_RESP_ERR_NOT_COORDINATOR_FOR_GROUP     \
+        RD_KAFKA_RESP_ERR_NOT_COORDINATOR
 	/** Invalid topic */
         RD_KAFKA_RESP_ERR_TOPIC_EXCEPTION = 17,
 	/** Message batch larger than configured server segment size */
@@ -539,6 +550,9 @@ typedef enum {
         RD_KAFKA_RESP_ERR_PREFERRED_LEADER_NOT_AVAILABLE = 80,
         /** Consumer group has reached maximum size */
         RD_KAFKA_RESP_ERR_GROUP_MAX_SIZE_REACHED = 81,
+        /** Static consumer fenced by other consumer with same
+         *  group.instance.id. */
+        RD_KAFKA_RESP_ERR_FENCED_INSTANCE_ID = 82,
 
         RD_KAFKA_RESP_ERR_END_ALL,
 } rd_kafka_resp_err_t;
@@ -1414,9 +1428,12 @@ typedef enum {
  * The properties are identical to the Apache Kafka configuration properties
  * whenever possible.
  *
+ * @remark A successful call to rd_kafka_new() will assume ownership of
+ * the conf object and rd_kafka_conf_destroy() must not be called.
+ *
  * @returns A new rd_kafka_conf_t object with defaults set.
  *
- * @sa rd_kafka_conf_set(), rd_kafka_conf_destroy()
+ * @sa rd_kafka_new(), rd_kafka_conf_set(), rd_kafka_conf_destroy()
  */
 RD_EXPORT
 rd_kafka_conf_t *rd_kafka_conf_new(void);
@@ -3344,7 +3361,8 @@ rd_kafka_offsets_store(rd_kafka_t *rk,
  *
  * @returns RD_KAFKA_RESP_ERR_NO_ERROR on success or
  *          RD_KAFKA_RESP_ERR__INVALID_ARG if list is empty, contains invalid
- *          topics or regexes.
+ *          topics or regexes,
+ *          RD_KAFKA_RESP_ERR__FATAL if the consumer has raised a fatal error.
  */
 RD_EXPORT rd_kafka_resp_err_t
 rd_kafka_subscribe (rd_kafka_t *rk,
@@ -3415,6 +3433,8 @@ rd_kafka_message_t *rd_kafka_consumer_poll (rd_kafka_t *rk, int timeout_ms);
  *
  * @returns An error code indicating if the consumer close was succesful
  *          or not.
+ *          RD_KAFKA_RESP_ERR__FATAL is returned if the consumer has raised
+ *          a fatal error.
  *
  * @remark The application still needs to call rd_kafka_destroy() after
  *         this call finishes to clean up the underlying handle resources.
@@ -3437,6 +3457,10 @@ rd_kafka_resp_err_t rd_kafka_consumer_close (rd_kafka_t *rk);
  * A zero-length \p partitions will treat the partitions as a valid,
  * albeit empty, assignment, and maintain internal state, while a \c NULL
  * value for \p partitions will reset and clear the internal state.
+ *
+ * @returns An error code indicating if the new assignment was applied or not.
+ *          RD_KAFKA_RESP_ERR__FATAL is returned if the consumer has raised
+ *          a fatal error.
  */
 RD_EXPORT rd_kafka_resp_err_t
 rd_kafka_assign (rd_kafka_t *rk,
@@ -3471,6 +3495,11 @@ rd_kafka_assignment (rd_kafka_t *rk,
  * If a rd_kafka_conf_set_offset_commit_cb() offset commit callback has been
  * configured the callback will be enqueued for a future call to
  * rd_kafka_poll(), rd_kafka_consumer_poll() or similar.
+ *
+ * @returns An error code indiciating if the commit was successful,
+ *          or successfully scheduled if asynchronous, or failed.
+ *          RD_KAFKA_RESP_ERR__FATAL is returned if the consumer has raised
+ *          a fatal error.
  */
 RD_EXPORT rd_kafka_resp_err_t
 rd_kafka_commit (rd_kafka_t *rk, const rd_kafka_topic_partition_list_t *offsets,

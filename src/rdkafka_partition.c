@@ -119,18 +119,38 @@ static void rd_kafka_toppar_lag_handle_Offset (rd_kafka_t *rk,
 /**
  * Request information from broker to keep track of consumer lag.
  *
- * Locality: toppar handle thread
+ * @locality toppar handle thread
+ * @locks none
  */
 static void rd_kafka_toppar_consumer_lag_req (rd_kafka_toppar_t *rktp) {
-	rd_kafka_broker_t *rkb;
         rd_kafka_topic_partition_list_t *partitions;
 
         if (rktp->rktp_wait_consumer_lag_resp)
                 return; /* Previous request not finished yet */
 
-        rkb = rd_kafka_toppar_leader(rktp, 1/*proper brokers only*/);
-        if (!rkb)
+        rd_kafka_toppar_lock(rktp);
+
+        /* Offset requests can only be sent to the leader replica.
+         *
+         * Note: If rktp is delegated to a preferred replica, it is
+         * certain that FETCH >= v5 and so rktp_lo_offset will be
+         * updated via LogStartOffset in the FETCH response.
+         */
+        if (!rktp->rktp_leader || (rktp->rktp_leader != rktp->rktp_broker)) {
+                rd_kafka_toppar_unlock(rktp);
 		return;
+        }
+
+        /* Also don't send a timed log start offset request if leader
+         * broker supports FETCH >= v5, since this will be set when
+         * doing fetch requests.
+         */
+        if (rd_kafka_broker_ApiVersion_supported(rktp->rktp_broker, 
+                                                 RD_KAFKAP_Fetch, 0,
+                                                 5, NULL) == 5) {
+                rd_kafka_toppar_unlock(rktp);
+                return;
+        }
 
         rktp->rktp_wait_consumer_lag_resp = 1;
 
@@ -138,24 +158,24 @@ static void rd_kafka_toppar_consumer_lag_req (rd_kafka_toppar_t *rktp) {
         rd_kafka_topic_partition_list_add(partitions,
                                           rktp->rktp_rkt->rkt_topic->str,
                                           rktp->rktp_partition)->offset =
-                RD_KAFKA_OFFSET_BEGINNING;
+                                          RD_KAFKA_OFFSET_BEGINNING;
 
         /* Ask for oldest offset. The newest offset is automatically
          * propagated in FetchResponse.HighwaterMark. */
-        rd_kafka_OffsetRequest(rkb, partitions, 0,
+        rd_kafka_OffsetRequest(rktp->rktp_broker, partitions, 0,
                                RD_KAFKA_REPLYQ(rktp->rktp_ops, 0),
                                rd_kafka_toppar_lag_handle_Offset,
                                rd_kafka_toppar_keep(rktp));
 
-        rd_kafka_topic_partition_list_destroy(partitions);
+        rd_kafka_toppar_unlock(rktp);
 
-        rd_kafka_broker_destroy(rkb); /* from toppar_leader() */
+        rd_kafka_topic_partition_list_destroy(partitions);
 }
 
 
 
 /**
- * Request earliest offset to measure consumer lag
+ * Request earliest offset for a partition
  *
  * Locality: toppar handler thread
  */
@@ -182,6 +202,11 @@ shptr_rd_kafka_toppar_t *rd_kafka_toppar_new0 (rd_kafka_itopic_t *rkt,
 	rktp->rktp_partition = partition;
 	rktp->rktp_rkt = rkt;
         rktp->rktp_leader_id = -1;
+        rktp->rktp_broker_id = -1;
+        rd_interval_init(&rktp->rktp_lease_intvl);
+        rd_interval_init(&rktp->rktp_new_lease_intvl);
+        rd_interval_init(&rktp->rktp_new_lease_log_intvl);
+        rd_interval_init(&rktp->rktp_metadata_intvl);
         /* Mark partition as unknown (does not exist) until we see the
          * partition in topic metadata. */
         if (partition != RD_KAFKA_PARTITION_UA)
@@ -217,12 +242,15 @@ shptr_rd_kafka_toppar_t *rd_kafka_toppar_new0 (rd_kafka_itopic_t *rkt,
         rd_atomic32_init(&rktp->rktp_msgs_inflight, 0);
         rd_kafka_pid_reset(&rktp->rktp_eos.pid);
 
-        /* Consumer: If statistics is available we query the oldest offset
+        /* Consumer: If statistics is available we query the log start offset
          * of each partition.
          * Since the oldest offset only moves on log retention, we cap this
          * value on the low end to a reasonable value to avoid flooding
          * the brokers with OffsetRequests when our statistics interval is low.
-         * FIXME: Use a global timer to collect offsets for all partitions */
+         * FIXME: Use a global timer to collect offsets for all partitions
+         * FIXME: This timer is superfulous for FETCH >= v5 because the log
+         *        start offset is included in fetch responses.
+         * */
         if (rktp->rktp_rkt->rkt_rk->rk_conf.stats_interval_ms > 0 &&
             rkt->rkt_rk->rk_type == RD_KAFKA_CONSUMER &&
             rktp->rktp_partition != RD_KAFKA_PARTITION_UA) {
@@ -293,6 +321,9 @@ void rd_kafka_toppar_destroy_final (rd_kafka_toppar_t *rktp) {
 	rd_kafka_topic_destroy0(rktp->rktp_s_rkt);
 
 	mtx_destroy(&rktp->rktp_lock);
+
+        if (rktp->rktp_leader)
+                rd_kafka_broker_destroy(rktp->rktp_leader);
 
         rd_refcnt_destroy(&rktp->rktp_refcnt);
 
@@ -756,7 +787,7 @@ rd_kafka_msgq_insert_msgq_before (rd_kafka_msgq_t *destq,
 void rd_kafka_msgq_insert_msgq (rd_kafka_msgq_t *destq,
                                 rd_kafka_msgq_t *srcq,
                                 int (*cmp) (const void *a, const void *b)) {
-        rd_kafka_msg_t *sfirst, *start_pos = NULL;
+        rd_kafka_msg_t *sfirst, *dlast, *start_pos = NULL;
 
         if (unlikely(RD_KAFKA_MSGQ_EMPTY(srcq))) {
                 /* srcq is empty */
@@ -782,9 +813,22 @@ void rd_kafka_msgq_insert_msgq (rd_kafka_msgq_t *destq,
         rd_kafka_msgq_verify_order(NULL, destq, 0, rd_false);
         rd_kafka_msgq_verify_order(NULL, srcq, 0, rd_false);
 
+        dlast = rd_kafka_msgq_last(destq);
+        sfirst = rd_kafka_msgq_first(srcq);
+
+        /* Most common case, all of srcq goes after destq */
+        if (likely(cmp(dlast, sfirst) < 0)) {
+                rd_kafka_msgq_concat(destq, srcq);
+
+                rd_kafka_msgq_verify_order(NULL, destq, 0, rd_false);
+
+                rd_assert(RD_KAFKA_MSGQ_EMPTY(srcq));
+                return;
+        }
+
         /* Insert messages from srcq into destq in non-overlapping
          * chunks until srcq is exhausted. */
-        while (likely((sfirst = rd_kafka_msgq_first(srcq)) != NULL)) {
+        while (likely(sfirst != NULL)) {
                 rd_kafka_msg_t *insert_before;
 
                 /* Get insert position in destq of first element in srcq */
@@ -800,6 +844,9 @@ void rd_kafka_msgq_insert_msgq (rd_kafka_msgq_t *destq,
                  * does not have to re-scan destq and what was
                  * added from srcq. */
                 start_pos = insert_before;
+
+                /* For next iteration */
+                sfirst = rd_kafka_msgq_first(srcq);
 
                 rd_kafka_msgq_verify_order(NULL, destq, 0, rd_false);
                 rd_kafka_msgq_verify_order(NULL, srcq, 0, rd_false);
@@ -926,29 +973,33 @@ void rd_kafka_toppar_purge_queues (rd_kafka_toppar_t *rktp) {
 
 
 /**
- * Migrate rktp from (optional) \p old_rkb to (optional) \p new_rkb.
+ * @brief Migrate rktp from (optional) \p old_rkb to (optional) \p new_rkb,
+ *        but at least one is required to be non-NULL.
+ *
  * This is an async operation.
  *
- * Locks: rd_kafka_toppar_lock() MUST be held
+ * @locks rd_kafka_toppar_lock() MUST be held
  */
 static void rd_kafka_toppar_broker_migrate (rd_kafka_toppar_t *rktp,
                                             rd_kafka_broker_t *old_rkb,
                                             rd_kafka_broker_t *new_rkb) {
         rd_kafka_op_t *rko;
         rd_kafka_broker_t *dest_rkb;
-        int had_next_leader = rktp->rktp_next_leader ? 1 : 0;
+        int had_next_broker = rktp->rktp_next_broker ? 1 : 0;
 
-        /* Update next leader */
+        rd_assert(old_rkb || new_rkb);
+
+        /* Update next broker */
         if (new_rkb)
                 rd_kafka_broker_keep(new_rkb);
-        if (rktp->rktp_next_leader)
-                rd_kafka_broker_destroy(rktp->rktp_next_leader);
-        rktp->rktp_next_leader = new_rkb;
+        if (rktp->rktp_next_broker)
+                rd_kafka_broker_destroy(rktp->rktp_next_broker);
+        rktp->rktp_next_broker = new_rkb;
 
-        /* If next_leader is set it means there is already an async
+        /* If next_broker is set it means there is already an async
          * migration op going on and we should not send a new one
-         * but simply change the next_leader (which we did above). */
-        if (had_next_leader)
+         * but simply change the next_broker (which we did above). */
+        if (had_next_broker)
                 return;
 
         /* Revert from offset-wait state back to offset-query
@@ -958,16 +1009,16 @@ static void rd_kafka_toppar_broker_migrate (rd_kafka_toppar_t *rktp,
          * to time out..slowly) */
         if (rktp->rktp_fetch_state == RD_KAFKA_TOPPAR_FETCH_OFFSET_WAIT)
                 rd_kafka_toppar_offset_retry(rktp, 500,
-                                             "migrating to new leader");
+                                             "migrating to new broker");
 
         if (old_rkb) {
                 /* If there is an existing broker for this toppar we let it
                  * first handle its own leave and then trigger the join for
-                 * the next leader, if any. */
+                 * the next broker, if any. */
                 rko = rd_kafka_op_new(RD_KAFKA_OP_PARTITION_LEAVE);
                 dest_rkb = old_rkb;
         } else {
-                /* No existing broker, send join op directly to new leader. */
+                /* No existing broker, send join op directly to new broker. */
                 rko = rd_kafka_op_new(RD_KAFKA_OP_PARTITION_JOIN);
                 dest_rkb = new_rkb;
         }
@@ -1000,10 +1051,10 @@ void rd_kafka_toppar_broker_leave_for_remove (rd_kafka_toppar_t *rktp) {
 
         rktp->rktp_flags |= RD_KAFKA_TOPPAR_F_REMOVE;
 
-	if (rktp->rktp_next_leader)
-		dest_rkb = rktp->rktp_next_leader;
-	else if (rktp->rktp_leader)
-		dest_rkb = rktp->rktp_leader;
+	if (rktp->rktp_next_broker)
+		dest_rkb = rktp->rktp_next_broker;
+	else if (rktp->rktp_broker)
+		dest_rkb = rktp->rktp_broker;
 	else {
 		rd_kafka_dbg(rktp->rktp_rkt->rkt_rk, TOPIC, "TOPPARDEL",
 			     "%.*s [%"PRId32"] %p not handled by any broker: "
@@ -1036,37 +1087,33 @@ void rd_kafka_toppar_broker_leave_for_remove (rd_kafka_toppar_t *rktp) {
 }
 
 
-
 /**
- * Delegates broker 'rkb' as leader for toppar 'rktp'.
- * 'rkb' may be NULL to undelegate leader.
+ * @brief Delegates toppar 'rktp' to broker 'rkb'. 'rkb' may be NULL to
+ *        undelegate broker.
  *
- * Locks: Caller must have rd_kafka_topic_wrlock(rktp->rktp_rkt) 
- *        AND rd_kafka_toppar_lock(rktp) held.
+ * @locks Caller must have rd_kafka_toppar_lock(rktp) held.
  */
 void rd_kafka_toppar_broker_delegate (rd_kafka_toppar_t *rktp,
-				      rd_kafka_broker_t *rkb,
-				      int for_removal) {
+				      rd_kafka_broker_t *rkb) {
         rd_kafka_t *rk = rktp->rktp_rkt->rkt_rk;
         int internal_fallback = 0;
 
 	rd_kafka_dbg(rktp->rktp_rkt->rkt_rk, TOPIC, "BRKDELGT",
 		     "%s [%"PRId32"]: delegate to broker %s "
-		     "(rktp %p, term %d, ref %d, remove %d)",
+		     "(rktp %p, term %d, ref %d)",
 		     rktp->rktp_rkt->rkt_topic->str, rktp->rktp_partition,
 		     rkb ? rkb->rkb_name : "(none)",
 		     rktp, rd_kafka_terminating(rk),
-		     rd_refcnt_get(&rktp->rktp_refcnt),
-		     for_removal);
+		     rd_refcnt_get(&rktp->rktp_refcnt));
 
-        /* Delegate toppars with no leader to the
-         * internal broker for bookkeeping. */
-        if (!rkb && !for_removal && !rd_kafka_terminating(rk)) {
+        /* Undelegated toppars are delgated to the internal
+         * broker for bookkeeping. */
+        if (!rkb && !rd_kafka_terminating(rk)) {
                 rkb = rd_kafka_broker_internal(rk);
                 internal_fallback = 1;
         }
 
-	if (rktp->rktp_leader == rkb && !rktp->rktp_next_leader) {
+	if (rktp->rktp_broker == rkb && !rktp->rktp_next_broker) {
                 rd_kafka_dbg(rktp->rktp_rkt->rkt_rk, TOPIC, "BRKDELGT",
 			     "%.*s [%"PRId32"]: not updating broker: "
                              "already on correct broker %s",
@@ -1079,17 +1126,18 @@ void rd_kafka_toppar_broker_delegate (rd_kafka_toppar_t *rktp,
 		return;
         }
 
-	if (rktp->rktp_leader)
+	if (rktp->rktp_broker)
 		rd_kafka_dbg(rktp->rktp_rkt->rkt_rk, TOPIC, "BRKDELGT",
-			     "%.*s [%"PRId32"]: broker %s no longer leader",
+			     "%.*s [%"PRId32"]: no longer delegated to "
+			     "broker %s",
 			     RD_KAFKAP_STR_PR(rktp->rktp_rkt->rkt_topic),
 			     rktp->rktp_partition,
-			     rd_kafka_broker_name(rktp->rktp_leader));
+			     rd_kafka_broker_name(rktp->rktp_broker));
 
 
 	if (rkb) {
 		rd_kafka_dbg(rktp->rktp_rkt->rkt_rk, TOPIC, "BRKDELGT",
-			     "%.*s [%"PRId32"]: broker %s is now leader "
+			     "%.*s [%"PRId32"]: delegating to broker %s "
 			     "for partition with %i messages "
 			     "(%"PRIu64" bytes) queued",
 			     RD_KAFKAP_STR_PR(rktp->rktp_rkt->rkt_topic),
@@ -1101,13 +1149,13 @@ void rd_kafka_toppar_broker_delegate (rd_kafka_toppar_t *rktp,
 
 	} else {
 		rd_kafka_dbg(rktp->rktp_rkt->rkt_rk, TOPIC, "BRKDELGT",
-			     "%.*s [%"PRId32"]: no leader broker",
+			     "%.*s [%"PRId32"]: no broker delegated",
 			     RD_KAFKAP_STR_PR(rktp->rktp_rkt->rkt_topic),
 			     rktp->rktp_partition);
 	}
 
-        if (rktp->rktp_leader || rkb)
-                rd_kafka_toppar_broker_migrate(rktp, rktp->rktp_leader, rkb);
+        if (rktp->rktp_broker || rkb)
+                rd_kafka_toppar_broker_migrate(rktp, rktp->rktp_broker, rkb);
 
         if (internal_fallback)
                 rd_kafka_broker_destroy(rkb);
@@ -1206,8 +1254,8 @@ void rd_kafka_toppar_next_offset_handle (rd_kafka_toppar_t *rktp,
         rd_kafka_toppar_set_fetch_state(rktp, RD_KAFKA_TOPPAR_FETCH_ACTIVE);
 
         /* Wake-up broker thread which might be idling on IO */
-        if (rktp->rktp_leader)
-                rd_kafka_broker_wakeup(rktp->rktp_leader);
+        if (rktp->rktp_broker)
+                rd_kafka_broker_wakeup(rktp->rktp_broker);
 
 }
 
@@ -1269,7 +1317,7 @@ static void rd_kafka_toppar_handle_Offset (rd_kafka_t *rk,
 
 	rd_kafka_toppar_lock(rktp);
 	/* Drop reply from previous partition leader */
-	if (err != RD_KAFKA_RESP_ERR__DESTROY && rktp->rktp_leader != rkb)
+	if (err != RD_KAFKA_RESP_ERR__DESTROY && rktp->rktp_broker != rkb)
 		err = RD_KAFKA_RESP_ERR__OUTDATED;
 	rd_kafka_toppar_unlock(rktp);
 
@@ -1437,7 +1485,7 @@ void rd_kafka_toppar_offset_request (rd_kafka_toppar_t *rktp,
 	rd_kafka_assert(NULL,
 			thrd_is_current(rktp->rktp_rkt->rkt_rk->rk_thread));
 
-        rkb = rktp->rktp_leader;
+        rkb = rktp->rktp_broker;
 
         if (!backoff_ms && (!rkb || rkb->rkb_source == RD_KAFKA_INTERNAL))
                 backoff_ms = 500;
@@ -1568,8 +1616,8 @@ static void rd_kafka_toppar_fetch_start (rd_kafka_toppar_t *rktp,
 						RD_KAFKA_TOPPAR_FETCH_ACTIVE);
 
                 /* Wake-up broker thread which might be idling on IO */
-                if (rktp->rktp_leader)
-                        rd_kafka_broker_wakeup(rktp->rktp_leader);
+                if (rktp->rktp_broker)
+                        rd_kafka_broker_wakeup(rktp->rktp_broker);
 
 	}
 
@@ -1659,10 +1707,9 @@ void rd_kafka_toppar_fetch_stop (rd_kafka_toppar_t *rktp,
 
         /* Assign the future replyq to propagate stop results. */
         rd_kafka_assert(rktp->rktp_rkt->rkt_rk, rktp->rktp_replyq.q == NULL);
-	if (rko_orig) {
-		rktp->rktp_replyq = rko_orig->rko_replyq;
-		rd_kafka_replyq_clear(&rko_orig->rko_replyq);
-	}
+        rktp->rktp_replyq = rko_orig->rko_replyq;
+        rd_kafka_replyq_clear(&rko_orig->rko_replyq);
+
         rd_kafka_toppar_set_fetch_state(rktp, RD_KAFKA_TOPPAR_FETCH_STOPPING);
 
         /* Stop offset store (possibly async).
@@ -1723,15 +1770,15 @@ void rd_kafka_toppar_seek (rd_kafka_toppar_t *rktp,
 						RD_KAFKA_TOPPAR_FETCH_ACTIVE);
 
                 /* Wake-up broker thread which might be idling on IO */
-                if (rktp->rktp_leader)
-                        rd_kafka_broker_wakeup(rktp->rktp_leader);
+                if (rktp->rktp_broker)
+                        rd_kafka_broker_wakeup(rktp->rktp_broker);
 	}
 
         /* Signal back to caller thread that seek has commenced, or err */
 err_reply:
 	rd_kafka_toppar_unlock(rktp);
 
-        if (rko_orig && rko_orig->rko_replyq.q) {
+        if (rko_orig->rko_replyq.q) {
                 rd_kafka_op_t *rko;
 
                 rko = rd_kafka_op_new(RD_KAFKA_OP_SEEK|RD_KAFKA_OP_REPLY);
@@ -1856,6 +1903,7 @@ static void rd_kafka_toppar_pause_resume (rd_kafka_toppar_t *rktp,
  * @returns the partition's Fetch backoff timestamp, or 0 if no backoff.
  *
  * @locality broker thread
+ * @locks none
  */
 rd_ts_t rd_kafka_toppar_fetch_decide (rd_kafka_toppar_t *rktp,
 				   rd_kafka_broker_t *rkb,
@@ -1864,8 +1912,25 @@ rd_ts_t rd_kafka_toppar_fetch_decide (rd_kafka_toppar_t *rktp,
         const char *reason = "";
         int32_t version;
         rd_ts_t ts_backoff = 0;
+        rd_bool_t lease_expired = rd_false;
 
-	rd_kafka_toppar_lock(rktp);
+        rd_kafka_toppar_lock(rktp);
+
+        /* Check for preferred replica lease expiry */
+        lease_expired =
+                rktp->rktp_leader_id != rktp->rktp_broker_id &&
+                rd_interval(&rktp->rktp_lease_intvl,
+                            5*60*1000*1000/*5 minutes*/, 0) > 0;
+        if (lease_expired) {
+                /* delete_to_leader() requires no locks to be held */
+                rd_kafka_toppar_unlock(rktp);
+                rd_kafka_toppar_delegate_to_leader(rktp);
+                rd_kafka_toppar_lock(rktp);
+
+                reason = "preferred replica lease expired";
+                should_fetch = 0;
+                goto done;
+        }
 
 	/* Forced removal from fetch list */
 	if (unlikely(force_remove)) {
@@ -1890,12 +1955,14 @@ rd_ts_t rd_kafka_toppar_fetch_decide (rd_kafka_toppar_t *rktp,
         /* Update broker thread's fetch op version */
         version = rktp->rktp_op_version;
         if (version > rktp->rktp_fetch_version ||
-	    rktp->rktp_next_offset != rktp->rktp_last_next_offset) {
+            rktp->rktp_next_offset != rktp->rktp_last_next_offset ||
+            rktp->rktp_offsets.fetch_offset == RD_KAFKA_OFFSET_INVALID) {
                 /* New version barrier, something was modified from the
                  * control plane. Reset and start over.
 		 * Alternatively only the next_offset changed but not the
 		 * barrier, which is the case when automatically triggering
-		 * offset.reset (such as on PARTITION_EOF). */
+		 * offset.reset (such as on PARTITION_EOF or
+                 * OFFSET_OUT_OF_RANGE). */
 
                 rd_kafka_dbg(rktp->rktp_rkt->rkt_rk, TOPIC, "FETCHDEC",
                              "Topic %s [%"PRId32"]: fetch decide: "
@@ -1954,7 +2021,7 @@ rd_ts_t rd_kafka_toppar_fetch_decide (rd_kafka_toppar_t *rktp,
                 rd_rkb_dbg(rkb, FETCH, "FETCH",
                            "Topic %s [%"PRId32"] in state %s at offset %s "
                            "(%d/%d msgs, %"PRId64"/%d kb queued, "
-			   "opv %"PRId32") is %sfetchable: %s",
+			   "opv %"PRId32") is %s%s",
                            rktp->rktp_rkt->rkt_topic->str,
                            rktp->rktp_partition,
 			   rd_kafka_fetch_states[rktp->rktp_fetch_state],
@@ -1964,7 +2031,8 @@ rd_ts_t rd_kafka_toppar_fetch_decide (rd_kafka_toppar_t *rktp,
                            rd_kafka_q_size(rktp->rktp_fetchq) / 1024,
                            rkb->rkb_rk->rk_conf.queued_max_msg_kbytes,
 			   rktp->rktp_fetch_version,
-                           should_fetch ? "" : "not ", reason);
+                           should_fetch ? "fetchable" : "not fetchable: ",
+                           reason);
 
                 if (should_fetch) {
 			rd_dassert(rktp->rktp_fetch_version > 0);
@@ -2437,7 +2505,7 @@ void rd_kafka_toppar_enq_error (rd_kafka_toppar_t *rktp,
 
 
 /**
- * Returns the local leader broker for this toppar.
+ * Returns the currently delegated broker for this toppar.
  * If \p proper_broker is set NULL will be returned if current handler
  * is not a proper broker (INTERNAL broker).
  *
@@ -2445,11 +2513,11 @@ void rd_kafka_toppar_enq_error (rd_kafka_toppar_t *rktp,
  *
  * Locks: none
  */
-rd_kafka_broker_t *rd_kafka_toppar_leader (rd_kafka_toppar_t *rktp,
+rd_kafka_broker_t *rd_kafka_toppar_broker (rd_kafka_toppar_t *rktp,
                                            int proper_broker) {
         rd_kafka_broker_t *rkb;
         rd_kafka_toppar_lock(rktp);
-        rkb = rktp->rktp_leader;
+        rkb = rktp->rktp_broker;
         if (rkb) {
                 if (proper_broker && rkb->rkb_source == RD_KAFKA_INTERNAL)
                         rkb = NULL;
@@ -2463,8 +2531,8 @@ rd_kafka_broker_t *rd_kafka_toppar_leader (rd_kafka_toppar_t *rktp,
 
 
 /**
- * @brief Take action when partition leader becomes unavailable.
- *        This should be called when leader-specific requests fail with
+ * @brief Take action when partition broker becomes unavailable.
+ *        This should be called when requests fail with
  *        NOT_LEADER_FOR.. or similar error codes, e.g. ProduceRequest.
  *
  * @locks none
@@ -2475,8 +2543,8 @@ void rd_kafka_toppar_leader_unavailable (rd_kafka_toppar_t *rktp,
                                          rd_kafka_resp_err_t err) {
         rd_kafka_itopic_t *rkt = rktp->rktp_rkt;
 
-        rd_kafka_dbg(rkt->rkt_rk, TOPIC, "LEADERUA",
-                     "%s [%"PRId32"]: leader unavailable: %s: %s",
+        rd_kafka_dbg(rkt->rkt_rk, TOPIC, "BROKERUA",
+                     "%s [%"PRId32"]: broker unavailable: %s: %s",
                      rkt->rkt_topic->str, rktp->rktp_partition, reason,
                      rd_kafka_err2str(err));
 

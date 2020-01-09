@@ -26,6 +26,10 @@ else
     tests="$TESTS"
 fi
 
+if [[ $modes != gdb ]]; then
+    ARGS="$ARGS -p1"
+fi
+
 iter=0
 while true ; do
     iter=$(expr $iter + 1)

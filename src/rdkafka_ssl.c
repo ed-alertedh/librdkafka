@@ -177,7 +177,7 @@ rd_kafka_transport_ssl_io_update (rd_kafka_transport_t *rktrans, int ret,
 
         case SSL_ERROR_SYSCALL:
                 serr2 = ERR_peek_error();
-                if (!serr2 && !socket_errno)
+                if (!serr2 && !rd_socket_errno)
                         rd_snprintf(errstr, errstr_size, "Disconnected");
                 else if (serr2)
                         rd_kafka_ssl_error(NULL, rktrans->rktrans_rkb,
@@ -185,7 +185,7 @@ rd_kafka_transport_ssl_io_update (rd_kafka_transport_t *rktrans, int ret,
                 else
                         rd_snprintf(errstr, errstr_size,
                                     "SSL transport error: %s",
-                                    rd_strerror(socket_errno));
+                                    rd_strerror(rd_socket_errno));
                 return -1;
 
         case SSL_ERROR_ZERO_RETURN:
@@ -212,6 +212,7 @@ ssize_t rd_kafka_transport_ssl_send (rd_kafka_transport_t *rktrans,
 
         while ((rlen = rd_slice_peeker(slice, &p))) {
                 int r;
+                size_t r2;
 
                 r = SSL_write(rktrans->rktrans_ssl, p, (int)rlen);
 
@@ -225,7 +226,10 @@ ssize_t rd_kafka_transport_ssl_send (rd_kafka_transport_t *rktrans,
                 }
 
                 /* Update buffer read position */
-                rd_slice_read(slice, NULL, (size_t)r);
+                r2 = rd_slice_read(slice, NULL, (size_t)r);
+                rd_assert((size_t)r == r2 &&
+                          *"BUG: wrote more bytes than available in slice");
+
 
                 sum += r;
                 /* FIXME: remove this and try again immediately and let
@@ -472,11 +476,11 @@ int rd_kafka_transport_ssl_connect (rd_kafka_broker_t *rkb,
         if (!rktrans->rktrans_ssl)
                 goto fail;
 
-        if (!SSL_set_fd(rktrans->rktrans_ssl, rktrans->rktrans_s))
+        if (!SSL_set_fd(rktrans->rktrans_ssl, (int)rktrans->rktrans_s))
                 goto fail;
 
         if (rd_kafka_transport_ssl_set_endpoint_id(rktrans, errstr,
-                                                   sizeof(errstr)) == -1)
+                                                   errstr_size) == -1)
                 return -1;
 
         rd_kafka_transport_ssl_clear_error(rktrans);
@@ -863,6 +867,11 @@ static int rd_kafka_ssl_set_certs (rd_kafka_t *rk, SSL_CTX *ctx,
 
                 rd_assert(rk->rk_conf.ssl.key->pkey);
                 r = SSL_CTX_use_PrivateKey(ctx, rk->rk_conf.ssl.key->pkey);
+                if (r != 1) {
+                        rd_snprintf(errstr, errstr_size,
+                                    "ssl_key (in-memory) failed: ");
+                        return -1;
+                }
 
                 check_pkey = rd_true;
         }

@@ -746,15 +746,22 @@ rd_kafka_offset_reset_op_cb (rd_kafka_t *rk, rd_kafka_q_t *rkq,
 }
 
 /**
- * Take action when the offset for a toppar becomes unusable.
+ * @brief Take action when the offset for a toppar is unusable (due to an
+ *        error, or offset is logical).
  *
- * Locality: toppar handler thread
- * Locks: toppar_lock() MUST be held
+ * @param rktp the toppar
+ * @param err_offset a logical offset, or offset corresponding to the error.
+ * @param err the error, or RD_KAFKA_RESP_ERR_NO_ERROR if offset is logical.
+ * @param reason a reason string for logging.
+ *
+ * @locality: any. if not main thread, work will be enqued on main thread.
+ * @ocks: toppar_lock() MUST be held
  */
 void rd_kafka_offset_reset (rd_kafka_toppar_t *rktp, int64_t err_offset,
 			    rd_kafka_resp_err_t err, const char *reason) {
 	int64_t offset = RD_KAFKA_OFFSET_INVALID;
 	rd_kafka_op_t *rko;
+        const char *extra = "";
 
         /* Enqueue op for toppar handler thread if we're on the wrong thread. */
         if (!thrd_is_current(rktp->rktp_rkt->rkt_rk->rk_thread)) {
@@ -787,23 +794,42 @@ void rd_kafka_offset_reset (rd_kafka_toppar_t *rktp, int64_t err_offset,
                 rd_kafka_toppar_set_fetch_state(
 			rktp, RD_KAFKA_TOPPAR_FETCH_NONE);
 
-	} else {
-		/* Query logical offset */
-		rktp->rktp_query_offset = offset;
+        } else if (offset == RD_KAFKA_OFFSET_BEGINNING &&
+                   rktp->rktp_lo_offset >= 0) {
+                /* Use cached log start from last Fetch if available */
+                extra = "cached BEGINNING offset ";
+                offset = rktp->rktp_lo_offset;
+                rd_kafka_toppar_next_offset_handle(rktp, offset);
+
+        } else if (offset == RD_KAFKA_OFFSET_END &&
+                   rktp->rktp_ls_offset >= 0) {
+                /* Use cached log start from last Fetch if available */
+                extra = "cached END offset ";
+                offset = rktp->rktp_ls_offset;
+                rd_kafka_toppar_next_offset_handle(rktp, offset);
+
+        } else {
+                /* Else query cluster for offset */
+                rktp->rktp_query_offset = offset;
                 rd_kafka_toppar_set_fetch_state(
-			rktp, RD_KAFKA_TOPPAR_FETCH_OFFSET_QUERY);
+                        rktp, RD_KAFKA_TOPPAR_FETCH_OFFSET_QUERY);
 	}
 
 	rd_kafka_dbg(rktp->rktp_rkt->rkt_rk, TOPIC, "OFFSET",
 		     "%s [%"PRId32"]: offset reset (at offset %s) "
-		     "to %s: %s: %s",
+		     "to %s%s: %s: %s",
 		     rktp->rktp_rkt->rkt_topic->str, rktp->rktp_partition,
 		     rd_kafka_offset2str(err_offset),
-                     rd_kafka_offset2str(offset),
+                     extra, rd_kafka_offset2str(offset),
                      reason, rd_kafka_err2str(err));
 
+        /* Note: If rktp is not delegated to the leader, then low and high
+           offsets will necessarily be cached from the last FETCH request,
+           and so this offset query will never occur in that case for
+           BEGINNING / END logical offsets. */
 	if (rktp->rktp_fetch_state == RD_KAFKA_TOPPAR_FETCH_OFFSET_QUERY)
-		rd_kafka_toppar_offset_request(rktp, rktp->rktp_query_offset, 0);
+		rd_kafka_toppar_offset_request(rktp,
+                                               rktp->rktp_query_offset, 0);
 }
 
 
@@ -868,7 +894,7 @@ static void rd_kafka_offset_sync_tmr_cb (rd_kafka_timers_t *rkts, void *arg) {
  * Locks: toppar_lock(rktp) must be held
  */
 static void rd_kafka_offset_file_init (rd_kafka_toppar_t *rktp) {
-	char spath[4096];
+	char spath[4096+1]; /* larger than escfile to avoid warning */
 	const char *path = rktp->rktp_rkt->rkt_conf.offset_store_path;
 	int64_t offset = RD_KAFKA_OFFSET_INVALID;
 

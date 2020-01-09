@@ -62,6 +62,14 @@ rd_kafka_compression2str (rd_kafka_compression_t compr) {
                 [RD_KAFKA_COMPRESSION_ZSTD] = "zstd",
                 [RD_KAFKA_COMPRESSION_INHERIT] = "inherit"
         };
+        static RD_TLS char ret[32];
+
+        if (compr < 0 || compr >= RD_KAFKA_COMPRESSION_NUM) {
+                rd_snprintf(ret, sizeof(ret),
+                            "codec0x%x?", (int)compr);
+                return ret;
+        }
+
         return names[compr];
 }
 
@@ -148,7 +156,7 @@ typedef enum {
 
 /* Increase in steps of 64 as needed.
  * This must be larger than sizeof(rd_kafka_[topic_]conf_t) */
-#define RD_KAFKA_CONF_PROPS_IDX_MAX (64*25)
+#define RD_KAFKA_CONF_PROPS_IDX_MAX (64*26)
 
 /**
  * @struct rd_kafka_anyconf_t
@@ -320,6 +328,7 @@ struct rd_kafka_conf_s {
 	int    fetch_min_bytes;
 	int    fetch_error_backoff_ms;
         char  *group_id_str;
+        char  *group_instance_id;
 
         rd_kafka_pattern_list_t *topic_blacklist;
         struct rd_kafka_topic_conf_s *topic_conf; /* Default topic config
@@ -351,6 +360,8 @@ struct rd_kafka_conf_s {
         rd_kafka_isolation_level_t isolation_level;
 
 	int enable_partition_eof;
+
+	rd_kafkap_str_t *client_rack;
 
 	/*
 	 * Producer configuration
@@ -457,6 +468,13 @@ struct rd_kafka_conf_s {
                 int request_timeout_ms;  /* AdminOptions.request_timeout */
         } admin;
 
+
+        /*
+         * Test mocks
+         */
+        struct {
+                int broker_cnt;  /**< Number of mock brokers */
+        } mock;
 
         /*
          * Unit test pluggable interfaces
