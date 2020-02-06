@@ -96,7 +96,7 @@ rd_tmpabuf_alloc0 (const char *func, int line, rd_tmpabuf_t *tab, size_t size) {
 	if (unlikely(tab->of + size > tab->size)) {
 		if (tab->assert_on_fail) {
 			fprintf(stderr,
-				"%s: %s:%d: requested size %zd + %zd > %zd\n",
+				"%s: %s:%d: requested size %"PRIusz" + %"PRIusz" > %"PRIusz"\n",
 				__FUNCTION__, func, line, tab->of, size,
 				tab->size);
 			assert(!*"rd_tmpabuf_alloc: not enough size in buffer");
@@ -469,6 +469,19 @@ typedef void (rd_kafka_resp_cb_t) (rd_kafka_t *rk,
                                    rd_kafka_buf_t *request,
                                    void *opaque);
 
+
+/**
+ * @brief Sender callback. This callback is used to construct and send (enq)
+ *        a rkbuf on a particular broker.
+ */
+typedef rd_kafka_resp_err_t (rd_kafka_send_req_cb_t) (
+        rd_kafka_broker_t *rkb,
+        rd_kafka_op_t *rko,
+        rd_kafka_replyq_t replyq,
+        rd_kafka_resp_cb_t *resp_cb,
+        void *reply_opaque);
+
+
 struct rd_kafka_buf_s { /* rd_kafka_buf_t */
 	TAILQ_ENTRY(rd_kafka_buf_s) rkbuf_link;
 
@@ -521,8 +534,10 @@ struct rd_kafka_buf_s { /* rd_kafka_buf_t */
 	rd_refcnt_t rkbuf_refcnt;
 	void   *rkbuf_opaque;
 
-	int     rkbuf_retries;            /* Retries so far. */
-#define RD_KAFKA_BUF_NO_RETRIES  1000000  /* Do not retry */
+        int     rkbuf_max_retries;        /**< Maximum retries to attempt. */
+#define RD_KAFKA_BUF_NO_RETRIES 0         /**< Do not retry */
+        int     rkbuf_retries;            /**< Retries so far. */
+
 
         int     rkbuf_features;   /* Required feature(s) that must be
                                    * supported by broker. */
@@ -821,7 +836,7 @@ static RD_INLINE void rd_kafka_buf_update_i16 (rd_kafka_buf_t *rkbuf,
  */
 static RD_INLINE size_t rd_kafka_buf_write_i32 (rd_kafka_buf_t *rkbuf,
                                                int32_t v) {
-        v = htobe32(v);
+        v = (int32_t)htobe32(v);
         return rd_kafka_buf_write(rkbuf, &v, sizeof(v));
 }
 

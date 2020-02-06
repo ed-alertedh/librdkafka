@@ -108,7 +108,7 @@ namespace RdKafka {
  * @remark This value should only be used during compile time,
  *         for runtime checks of version use RdKafka::version()
  */
-#define RD_KAFKA_VERSION  0x010300ff
+#define RD_KAFKA_VERSION  0x01040005
 
 /**
  * @brief Returns the librdkafka version as integer.
@@ -281,6 +281,12 @@ enum ErrorCode {
         ERR__MAX_POLL_EXCEEDED = -147,
         /** Unknown broker */
         ERR__UNKNOWN_BROKER = -146,
+        /** Functionality not configured */
+        ERR__NOT_CONFIGURED = -145,
+        /** Instance has been fenced */
+        ERR__FENCED = -144,
+        /** Application generated error */
+        ERR__APPLICATION = -143,
 
         /** End internal error codes */
 	ERR__END = -100,
@@ -2920,6 +2926,51 @@ class RD_EXPORT Producer : public virtual Handle {
                               * purging to finish. */
   };
 
+  /**
+   * Transactional API
+   *
+   * Requires Kafka broker version v0.11.0 or later
+   *
+   * FIXME: These docs will be updated when the rdkafka.h docs have settled.
+   */
+
+  /**
+   * @brief
+   *
+   * FIXME blocking?
+   */
+  virtual ErrorCode init_transactions (int timeout_ms,
+                                       std::string &errstr) = 0;
+
+  /**
+   * FIXME blocking?
+   */
+  virtual ErrorCode begin_transaction (std::string &errstr) = 0;
+
+  /**
+   * FIXME blocking?
+   */
+  virtual ErrorCode send_offsets_to_transaction (
+          const std::vector<TopicPartition*> &offsets,
+          const std::string &group_id,
+          int timeout_ms,
+          std::string &errstr) = 0;
+
+  /**
+   * @brief
+   *
+   * FIXME blocking?
+   */
+  virtual ErrorCode commit_transaction (int timeout_ms,
+                                        std::string &errstr) = 0;
+
+  /**
+   * @brief
+   *
+   * FIXME blocking?
+   */
+  virtual ErrorCode abort_transaction (int timeout_ms,
+                                       std::string &errstr) = 0;
 };
 
 /**@}*/

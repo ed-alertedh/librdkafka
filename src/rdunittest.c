@@ -47,10 +47,59 @@
 #include "rdsysqueue.h"
 #include "rdkafka_sasl_oauthbearer.h"
 #include "rdkafka_msgset.h"
-
+#include "rdkafka_txnmgr.h"
 
 rd_bool_t rd_unittest_assert_on_failure = rd_false;
 rd_bool_t rd_unittest_on_ci = rd_false;
+rd_bool_t rd_unittest_slow = rd_false;
+
+#if ENABLE_CODECOV
+/**
+ * @name Code coverage
+ * @{
+ */
+
+static rd_atomic64_t rd_ut_covnrs[RD_UT_COVNR_MAX+1];
+
+void rd_ut_coverage (const char *file, const char *func, int line, int covnr) {
+        rd_assert(covnr >= 0 && covnr <= RD_UT_COVNR_MAX);
+        rd_atomic64_add(&rd_ut_covnrs[covnr], 1);
+}
+
+
+int64_t rd_ut_coverage_check (const char *file, const char *func, int line,
+                              int covnr) {
+        int64_t r;
+
+        rd_assert(covnr >= 0 && covnr <= RD_UT_COVNR_MAX);
+
+        r = rd_atomic64_get(&rd_ut_covnrs[covnr]);
+
+        if (!r) {
+                fprintf(stderr,
+                        "\033[31m"
+                        "RDUT: FAIL: %s:%d: %s: "
+                        "Code coverage nr %d: FAIL: "
+                        "code path not executed: "
+                        "perform `grep -RnF 'COVERAGE(%d)' src/` to find "
+                        "source location"
+                        "\033[0m\n",
+                        file, line, func, covnr, covnr);
+                if (rd_unittest_assert_on_failure)
+                        rd_assert(!*"unittest failure");
+                return 0;
+        }
+
+        fprintf(stderr,
+                "\033[34mRDUT: CCOV: %s:%d: %s: Code coverage nr %d: "
+                "PASS (%"PRId64" code path execution(s))\033[0m\n",
+                file, line, func, covnr, r);
+
+        return r;
+}
+/**@}*/
+
+#endif /* ENABLE_CODECOV */
 
 
 /**
@@ -416,6 +465,7 @@ int rd_unittest (void) {
                 { NULL }
         };
         int i;
+        const char *match = rd_getenv("RD_UT_TEST", NULL);
 
         if (rd_getenv("RD_UT_ASSERT", NULL))
                 rd_unittest_assert_on_failure = rd_true;
@@ -424,13 +474,46 @@ int rd_unittest (void) {
                 rd_unittest_on_ci = rd_true;
         }
 
+        if (rd_unittest_on_ci || (ENABLE_DEVEL + 0)) {
+                RD_UT_SAY("Unittests will not error out on slow CPUs");
+                rd_unittest_slow = rd_true;
+        }
+
+#if ENABLE_CODECOV
+        for (i = 0 ; i < RD_UT_COVNR_MAX+1 ; i++)
+                rd_atomic64_init(&rd_ut_covnrs[i], 0);
+#endif
+
         for (i = 0 ; unittests[i].name ; i++) {
-                int f = unittests[i].call();
+                int f;
+
+                if (match && strcmp(match, unittests[i].name))
+                        continue;
+
+                f = unittests[i].call();
                 RD_UT_SAY("unittest: %s: %4s\033[0m",
                           unittests[i].name,
                           f ? "\033[31mFAIL" : "\033[32mPASS");
                 fails += f;
         }
+
+#if ENABLE_CODECOV
+#if FIXME /* This check only works if all tests that use coverage checks
+           * are run, which we can't really know, so disable until we
+           * know what to do with this. */
+        if (!match) {
+                /* Verify all code paths were covered */
+                int cov_fails = 0;
+                for (i = 0 ; i < RD_UT_COVNR_MAX+1 ; i++) {
+                        if (!RD_UT_COVERAGE_CHECK(i))
+                                cov_fails++;
+                }
+                if (cov_fails > 0)
+                        RD_UT_SAY("%d code coverage failure(s) (ignored)\n",
+                                  cov_fails);
+        }
+#endif
+#endif
 
         return fails;
 }

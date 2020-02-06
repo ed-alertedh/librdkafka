@@ -121,6 +121,8 @@ typedef enum {
         RD_KAFKA_OP_CONNECT,         /**< Connect (to broker) */
         RD_KAFKA_OP_OAUTHBEARER_REFRESH, /**< Refresh OAUTHBEARER token */
         RD_KAFKA_OP_MOCK,            /**< Mock cluster command */
+        RD_KAFKA_OP_BROKER_MONITOR,    /**< Broker state change */
+        RD_KAFKA_OP_TXN,             /**< Transaction command */
         RD_KAFKA_OP__END
 } rd_kafka_op_type_t;
 
@@ -427,34 +429,68 @@ struct rd_kafka_op_s {
                 struct {
                         enum {
                                 RD_KAFKA_MOCK_CMD_TOPIC_SET_ERROR,
+                                RD_KAFKA_MOCK_CMD_TOPIC_CREATE,
                                 RD_KAFKA_MOCK_CMD_PART_SET_LEADER,
                                 RD_KAFKA_MOCK_CMD_PART_SET_FOLLOWER,
                                 RD_KAFKA_MOCK_CMD_PART_SET_FOLLOWER_WMARKS,
-                                RD_KAFKA_MOCK_CMD_BROKER_SET_RACK
+                                RD_KAFKA_MOCK_CMD_BROKER_SET_UPDOWN,
+                                RD_KAFKA_MOCK_CMD_BROKER_SET_RACK,
+                                RD_KAFKA_MOCK_CMD_COORD_SET,
+                                RD_KAFKA_MOCK_CMD_APIVERSION_SET,
                         } cmd;
 
                         rd_kafka_resp_err_t err; /**< Error for:
                                                   *    TOPIC_SET_ERROR */
                         char *name;              /**< For:
                                                   *    TOPIC_SET_ERROR
+                                                  *    TOPIC_CREATE
                                                   *    PART_SET_FOLLOWER
                                                   *    PART_SET_FOLLOWER_WMARKS
-                                                  *    BROKER_SET_RACK */
+                                                  *    BROKER_SET_RACK
+                                                  *    COORD_SET (key_type) */
+                        char *str;               /**< For:
+                                                  *    COORD_SET (key) */
                         int32_t partition;       /**< For:
                                                   *    PART_SET_FOLLOWER
                                                   *    PART_SET_FOLLOWER_WMARKS
-                                                  *    PART_SET_LEADER */
+                                                  *    PART_SET_LEADER
+                                                  *    APIVERSION_SET (ApiKey)
+                                                  */
                         int32_t broker_id;       /**< For:
                                                   *    PART_SET_FOLLOWER
                                                   *    PART_SET_LEADER
-                                                  *    BROKER_SET_RACK */
+                                                  *    BROKER_SET_UPDOWN
+                                                  *    BROKER_SET_RACK
+                                                  *    COORD_SET */
                         int64_t lo;              /**< Low offset, for:
+                                                  *    TOPIC_CREATE (part cnt)
                                                   *    PART_SET_FOLLOWER_WMARKS
+                                                  *    BROKER_SET_UPDOWN
+                                                  *    APIVERSION_SET (minver)
                                                   */
                         int64_t hi;              /**< High offset, for:
+                                                  *    TOPIC_CREATE (repl fact)
                                                   *    PART_SET_FOLLOWER_WMARKS
+                                                  *    APIVERSION_SET (maxver)
                                                   */
                 } mock;
+
+                struct {
+                        struct rd_kafka_broker_s *rkb; /**< Broker who's state
+                                                        *   changed. */
+                        /**< Callback to trigger on the op handler's thread. */
+                        void (*cb) (struct rd_kafka_broker_s *rkb);
+                } broker_monitor;
+
+                struct {
+                        char *errstr;   /**< Error string, if rko_err is set */
+                        char *group_id; /**< Consumer group id for commits */
+                        int   timeout_ms; /**< Operation timeout */
+                        rd_ts_t abs_timeout; /**< Absolute time */
+                        /**< Offsets to commit */
+                        rd_kafka_topic_partition_list_t *offsets;
+                } txn;
+
         } rko_u;
 };
 
@@ -483,7 +519,6 @@ int rd_kafka_op_reply (rd_kafka_op_t *rko, rd_kafka_resp_err_t err);
 
 #define rd_kafka_op_set_prio(rko,prio) ((rko)->rko_prio = prio)
 
-
 #define rd_kafka_op_err(rk,err,...) do {				\
 		if (!((rk)->rk_conf.enabled_events & RD_KAFKA_EVENT_ERROR)) { \
 			rd_kafka_log(rk, LOG_ERR, "ERROR", __VA_ARGS__); \
@@ -497,6 +532,10 @@ void rd_kafka_q_op_err (rd_kafka_q_t *rkq, rd_kafka_op_type_t optype,
                         rd_kafka_resp_err_t err, int32_t version,
                         rd_kafka_toppar_t *rktp, int64_t offset,
 			const char *fmt, ...);
+rd_kafka_op_t *rd_kafka_op_req0 (rd_kafka_q_t *destq,
+                                 rd_kafka_q_t *recvq,
+                                 rd_kafka_op_t *rko,
+                                 int timeout_ms);
 rd_kafka_op_t *rd_kafka_op_req (rd_kafka_q_t *destq,
                                 rd_kafka_op_t *rko,
                                 int timeout_ms);

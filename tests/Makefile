@@ -12,7 +12,7 @@ CXXFLAGS += -I../src -I../src-cpp
 LDFLAGS += -rdynamic -L../src -L../src-cpp
 
 # Latest Kafka version
-KAFKA_VERSION?=2.3.0
+KAFKA_VERSION?=2.4.0
 # Kafka versions for compatibility tests
 COMPAT_KAFKA_VERSIONS?=0.8.2.2 0.9.0.1 0.11.0.3 1.0.2 $(KAFKA_VERSION)
 -include ../Makefile.config
@@ -60,6 +60,10 @@ run_local: $(BIN)
 	@echo "Running local broker-less tests with idempotent producer"
 	./run-test.sh -p5 -l -P
 
+run_local_quick: $(BIN)
+	@echo "Running quick local broker-less tests with idempotent producer"
+	./run-test.sh -p5 -l -Q -P
+
 idempotent_par: $(BIN)
 	./run-test.sh -p5 -P
 
@@ -67,6 +71,13 @@ idempotent_seq: $(BIN)
 	./run-test.sh -p1 -P
 
 idempotent: idempotent_par
+
+transactions: $(BIN)
+	for _test in 0098 0101; do TESTS=$$_test ./run-test.sh ./$(BIN) ; done
+
+# Run unit tests
+unit: $(BIN)
+	TESTS=0000 ./run-test.sh -p1
 
 
 # Delete all test topics (based on prefix)
@@ -112,9 +123,6 @@ clean-output:
 realclean: clean clean-output
 	rm -f test_report_*.json
 
-0%:
-	TESTS=$@ ./run-test.sh
-
 java: .PHONY
 	make -C java
 
@@ -147,7 +155,9 @@ compat:
 # (| is for not running suites in parallel)
 release-test: | asan tsan pristine-full compat
 
-
 # Check resource usage (requires a running cluster environment)
 rusage:
 	./run-test.sh -R bare
+
+
+-include $(DEPS)

@@ -938,7 +938,7 @@ void rd_kafka_enq_once_del_source (rd_kafka_enq_once_t *eonce,
         int do_destroy;
 
         mtx_lock(&eonce->lock);
-        rd_assert(eonce->refcnt > 1);
+        rd_assert(eonce->refcnt > 0);
         eonce->refcnt--;
         do_destroy = eonce->refcnt == 0;
         mtx_unlock(&eonce->lock);
@@ -1001,6 +1001,7 @@ void rd_kafka_enq_once_trigger (rd_kafka_enq_once_t *eonce,
         }
 
         if (rko) {
+                rko->rko_err = err;
                 rd_kafka_replyq_enq(&replyq, rko, replyq.version);
                 rd_kafka_replyq_destroy(&replyq);
         }

@@ -362,7 +362,7 @@ static const char *rd_kafka_type2str (rd_kafka_type_t type) {
 }
 
 #define _ERR_DESC(ENUM,DESC) \
-	[ENUM - RD_KAFKA_RESP_ERR__BEGIN] = { ENUM, # ENUM + 18/*pfx*/, DESC }
+	[ENUM - RD_KAFKA_RESP_ERR__BEGIN] = { ENUM, &(# ENUM)[18]/*pfx*/, DESC }
 
 static const struct rd_kafka_err_desc rd_kafka_err_descs[] = {
 	_ERR_DESC(RD_KAFKA_RESP_ERR__BEGIN, NULL),
@@ -476,6 +476,12 @@ static const struct rd_kafka_err_desc rd_kafka_err_descs[] = {
                   "(max.poll.interval.ms) exceeded"),
         _ERR_DESC(RD_KAFKA_RESP_ERR__UNKNOWN_BROKER,
                   "Local: Unknown broker"),
+        _ERR_DESC(RD_KAFKA_RESP_ERR__NOT_CONFIGURED,
+                  "Local: Functionality not configured"),
+        _ERR_DESC(RD_KAFKA_RESP_ERR__FENCED,
+                  "Local: This instance has been fenced by a newer instance"),
+        _ERR_DESC(RD_KAFKA_RESP_ERR__APPLICATION,
+                  "Local: Application generated error"),
 
 	_ERR_DESC(RD_KAFKA_RESP_ERR_UNKNOWN,
 		  "Unknown broker error"),
@@ -754,21 +760,27 @@ rd_kafka_resp_err_t rd_kafka_fatal_error (rd_kafka_t *rk,
 /**
  * @brief Set's the fatal error for this instance.
  *
+ * @param do_lock RD_DO_LOCK: rd_kafka_wrlock() will be acquired and released,
+ *                RD_DONT_LOCK: caller must hold rd_kafka_wrlock().
+ *
  * @returns 1 if the error was set, or 0 if a previous fatal error
  *          has already been set on this instance.
  *
  * @locality any
  * @locks none
  */
-int rd_kafka_set_fatal_error (rd_kafka_t *rk, rd_kafka_resp_err_t err,
-                              const char *fmt, ...) {
+int rd_kafka_set_fatal_error0 (rd_kafka_t *rk, rd_dolock_t do_lock,
+                               rd_kafka_resp_err_t err,
+                               const char *fmt, ...) {
         va_list ap;
         char buf[512];
 
-        rd_kafka_wrlock(rk);
+        if (do_lock)
+                rd_kafka_wrlock(rk);
         rk->rk_fatal.cnt++;
         if (rd_atomic32_get(&rk->rk_fatal.err)) {
-                rd_kafka_wrunlock(rk);
+                if (do_lock)
+                        rd_kafka_wrunlock(rk);
                 rd_kafka_dbg(rk, GENERIC, "FATAL",
                              "Suppressing subsequent fatal error: %s",
                              rd_kafka_err2name(err));
@@ -782,7 +794,8 @@ int rd_kafka_set_fatal_error (rd_kafka_t *rk, rd_kafka_resp_err_t err,
         va_end(ap);
         rk->rk_fatal.errstr = rd_strdup(buf);
 
-        rd_kafka_wrunlock(rk);
+        if (do_lock)
+                rd_kafka_wrunlock(rk);
 
         /* If there is an error callback or event handler we
          * also log the fatal error as it happens.
@@ -817,15 +830,19 @@ int rd_kafka_set_fatal_error (rd_kafka_t *rk, rd_kafka_resp_err_t err,
                                 rd_kafka_err2str(err), rk->rk_fatal.errstr);
 
 
-        /* Purge producer queues, but not in-flight since we'll
-         * want proper delivery status for transmitted requests.
+        /* Tell rdkafka main thread to purge producer queues, but not
+         * in-flight since we'll want proper delivery status for transmitted
+         * requests.
          * Need NON_BLOCKING to avoid dead-lock if user is
          * calling purge() at the same time, which could be
          * waiting for this broker thread to handle its
          * OP_PURGE request. */
-        if (rk->rk_type == RD_KAFKA_PRODUCER)
-                rd_kafka_purge(rk, RD_KAFKA_PURGE_F_QUEUE|
-                               RD_KAFKA_PURGE_F_NON_BLOCKING);
+        if (rk->rk_type == RD_KAFKA_PRODUCER) {
+                rd_kafka_op_t *rko = rd_kafka_op_new(RD_KAFKA_OP_PURGE);
+                rko->rko_u.purge.flags = RD_KAFKA_PURGE_F_QUEUE|
+                        RD_KAFKA_PURGE_F_NON_BLOCKING;
+                rd_kafka_q_enq(rk->rk_ops, rko);
+        }
 
         return 1;
 }
@@ -1048,6 +1065,9 @@ static void rd_kafka_destroy_internal (rd_kafka_t *rk) {
 
         rd_kafka_dbg(rk, ALL, "DESTROY", "Destroy internal");
 
+        /* Destroy the coordinator cache */
+        rd_kafka_coord_cache_destroy(&rk->rk_coord_cache);
+
         /* Trigger any state-change waiters (which should check the
          * terminate flag whenever they wake up). */
         rd_kafka_brokers_broadcast_state_change(rk);
@@ -1168,6 +1188,17 @@ static void rd_kafka_destroy_internal (rd_kafka_t *rk) {
         /* Destroy mock cluster */
         if (rk->rk_mock.cluster)
                 rd_kafka_mock_cluster_destroy(rk->rk_mock.cluster);
+
+        if (rd_atomic32_get(&rk->rk_mock.cluster_cnt) > 0) {
+                rd_kafka_log(rk, LOG_EMERG, "MOCK",
+                             "%d mock cluster(s) still active: "
+                             "must be explicitly destroyed with "
+                             "rd_kafka_mock_cluster_destroy() prior to "
+                             "terminating the rd_kafka_t instance",
+                             (int)rd_atomic32_get(&rk->rk_mock.cluster_cnt));
+                rd_assert(!*"All mock clusters must be destroyed prior to "
+                          "rd_kafka_t destroy");
+        }
 }
 
 /**
@@ -1391,7 +1422,6 @@ static void rd_kafka_stats_emit_broker_reqs (struct _stats_emit *st,
                         [RD_KAFKAP_Fetch] = rd_true,
                         [RD_KAFKAP_OffsetCommit] = rd_true,
                         [RD_KAFKAP_OffsetFetch] = rd_true,
-                        [RD_KAFKAP_FindCoordinator] = rd_true,
                         [RD_KAFKAP_JoinGroup] = rd_true,
                         [RD_KAFKAP_Heartbeat] = rd_true,
                         [RD_KAFKAP_LeaveGroup] = rd_true,
@@ -1399,7 +1429,12 @@ static void rd_kafka_stats_emit_broker_reqs (struct _stats_emit *st,
                 },
                 [RD_KAFKA_CONSUMER] = {
                         [RD_KAFKAP_Produce] = rd_true,
-                        [RD_KAFKAP_InitProducerId] = rd_true
+                        [RD_KAFKAP_InitProducerId] = rd_true,
+                        /* Transactional producer */
+                        [RD_KAFKAP_AddPartitionsToTxn] = rd_true,
+                        [RD_KAFKAP_AddOffsetsToTxn] = rd_true,
+                        [RD_KAFKAP_EndTxn] = rd_true,
+                        [RD_KAFKAP_TxnOffsetCommit] = rd_true,
                 },
                 [2/*any client type*/] = {
                         [RD_KAFKAP_UpdateMetadata] = rd_true,
@@ -1408,19 +1443,12 @@ static void rd_kafka_stats_emit_broker_reqs (struct _stats_emit *st,
                         [RD_KAFKAP_StopReplica] = rd_true,
                         [RD_KAFKAP_OffsetForLeaderEpoch] = rd_true,
 
-                        /* FIXME: Remove when transaction support is added */
-                        [RD_KAFKAP_AddPartitionsToTxn] = rd_true,
-                        [RD_KAFKAP_AddOffsetsToTxn] = rd_true,
-                        [RD_KAFKAP_EndTxn] = rd_true,
-
                         [RD_KAFKAP_WriteTxnMarkers] = rd_true,
-                        [RD_KAFKAP_TxnOffsetCommit] = rd_true,
 
                         [RD_KAFKAP_AlterReplicaLogDirs] = rd_true,
                         [RD_KAFKAP_DescribeLogDirs] = rd_true,
 
-                        /* FIXME: Remove when re-auth support is added */
-                        [RD_KAFKAP_SaslAuthenticate] = rd_true,
+                        [RD_KAFKAP_SaslAuthenticate] = rd_false,
 
                         [RD_KAFKAP_CreateDelegationToken] = rd_true,
                         [RD_KAFKAP_RenewDelegationToken] = rd_true,
@@ -1622,7 +1650,7 @@ static void rd_kafka_stats_emit_all (rd_kafka_t *rk) {
 			   RD_KAFKAP_STR_PR(rkt->rkt_topic),
 			   RD_KAFKAP_STR_PR(rkt->rkt_topic),
 			   rkt->rkt_ts_metadata ?
-			   (rd_clock() - rkt->rkt_ts_metadata)/1000 : 0);
+			   (now - rkt->rkt_ts_metadata)/1000 : 0);
 
                 rd_kafka_stats_emit_avg(st, "batchsize",
                                         &rkt->rkt_avg_batchsize);
@@ -1674,7 +1702,7 @@ static void rd_kafka_stats_emit_all (rd_kafka_t *rk) {
                            (now - rkcg->rkcg_ts_statechange) / 1000 : 0,
                            rd_kafka_cgrp_join_state_names[rkcg->rkcg_join_state],
                            rkcg->rkcg_c.ts_rebalance ?
-                           (rd_clock() - rkcg->rkcg_c.ts_rebalance)/1000 : 0,
+                           (now - rkcg->rkcg_c.ts_rebalance)/1000 : 0,
                            rkcg->rkcg_c.rebalance_cnt,
                            rkcg->rkcg_c.rebalance_reason,
                            rkcg->rkcg_c.assignment_size);
@@ -1684,12 +1712,19 @@ static void rd_kafka_stats_emit_all (rd_kafka_t *rk) {
                 _st_printf(", \"eos\": { "
                            "\"idemp_state\": \"%s\", "
                            "\"idemp_stateage\": %"PRId64", "
+                           "\"txn_state\": \"%s\", "
+                           "\"txn_stateage\": %"PRId64", "
+                           "\"txn_may_enq\": %s, "
                            "\"producer_id\": %"PRId64", "
                            "\"producer_epoch\": %hd, "
                            "\"epoch_cnt\": %d "
                            "}",
                            rd_kafka_idemp_state2str(rk->rk_eos.idemp_state),
-                           (rd_clock() - rk->rk_eos.ts_idemp_state) / 1000,
+                           (now - rk->rk_eos.ts_idemp_state) / 1000,
+                           rd_kafka_txn_state2str(rk->rk_eos.txn_state),
+                           (now - rk->rk_eos.ts_txn_state) / 1000,
+                           rd_atomic32_get(&rk->rk_eos.txn_may_enq) ?
+                           "true":"false",
                            rk->rk_eos.pid.id,
                            rk->rk_eos.pid.epoch,
                            rk->rk_eos.epoch_cnt);
@@ -1756,6 +1791,7 @@ static void rd_kafka_1s_tmr_cb (rd_kafka_timers_t *rkts, void *arg) {
             rd_atomic32_get(&rk->rk_broker_up_cnt) == 0)
                 rd_kafka_connect_any(rk, "no cluster connection");
 
+        rd_kafka_coord_cache_expire(&rk->rk_coord_cache);
 }
 
 static void rd_kafka_stats_emit_tmr_cb (rd_kafka_timers_t *rkts, void *arg) {
@@ -2017,6 +2053,11 @@ rd_kafka_t *rd_kafka_new (rd_kafka_type_t type, rd_kafka_conf_t *app_conf,
 	TAILQ_INIT(&rk->rk_topics);
         rd_kafka_timers_init(&rk->rk_timers, rk);
         rd_kafka_metadata_cache_init(rk);
+        rd_kafka_coord_cache_init(&rk->rk_coord_cache,
+                                  rk->rk_conf.metadata_refresh_interval_ms ?
+                                  rk->rk_conf.metadata_refresh_interval_ms :
+                                  (5 * 60 * 1000) /* 5min */);
+        rd_kafka_coord_reqs_init(rk);
 
 	if (rk->rk_conf.dr_cb || rk->rk_conf.dr_msg_cb)
 		rk->rk_conf.enabled_events |= RD_KAFKA_EVENT_DR;
@@ -2095,6 +2136,7 @@ rd_kafka_t *rd_kafka_new (rd_kafka_type_t type, rd_kafka_conf_t *app_conf,
         }
 
         /* Create Mock cluster */
+        rd_atomic32_init(&rk->rk_mock.cluster_cnt, 0);
         if (rk->rk_conf.mock.broker_cnt > 0) {
                 rk->rk_mock.cluster = rd_kafka_mock_cluster_new(
                         rk, rk->rk_conf.mock.broker_cnt);
@@ -2108,7 +2150,8 @@ rd_kafka_t *rd_kafka_new (rd_kafka_type_t type, rd_kafka_conf_t *app_conf,
                 }
 
                 rd_kafka_log(rk, LOG_NOTICE, "MOCK", "Mock cluster enabled: "
-                             "original bootstrap.servers ignored and replaced");
+                             "original bootstrap.servers and security.protocol "
+                             "ignored and replaced");
 
                 /* Overwrite bootstrap.servers and connection settings */
                 if (rd_kafka_conf_set(&rk->rk_conf, "bootstrap.servers",
@@ -2116,6 +2159,10 @@ rd_kafka_t *rd_kafka_new (rd_kafka_type_t type, rd_kafka_conf_t *app_conf,
                                               rk->rk_mock.cluster),
                                       NULL, 0) != RD_KAFKA_CONF_OK)
                         rd_assert(!"failed to replace mock bootstrap.servers");
+
+                if (rd_kafka_conf_set(&rk->rk_conf, "security.protocol",
+                                      "plaintext", NULL, 0) != RD_KAFKA_CONF_OK)
+                        rd_assert(!"failed to reset mock security.protocol");
 
                 rk->rk_conf.security_protocol = RD_KAFKA_PROTO_PLAINTEXT;
         }
@@ -2159,7 +2206,10 @@ rd_kafka_t *rd_kafka_new (rd_kafka_type_t type, rd_kafka_conf_t *app_conf,
                                                 rk->rk_group_id,
                                                 rk->rk_client_id);
 
-        rk->rk_eos.transactional_id = rd_kafkap_str_new(NULL, 0);
+        if (type == RD_KAFKA_PRODUCER)
+                rk->rk_eos.transactional_id =
+                        rd_kafkap_str_new(rk->rk_conf.eos.transactional_id,
+                                          -1);
 
 #ifndef _WIN32
         /* Block all signals in newly created threads.
@@ -3369,7 +3419,7 @@ rd_kafka_offsets_for_times (rd_kafka_t *rk,
  * @returns RD_KAFKA_OP_RES_HANDLED if op was handled, else one of the
  *          other res types (such as OP_RES_PASS).
  *
- * @locality application thread
+ * @locality any thread that serves op queues
  */
 rd_kafka_op_res_t
 rd_kafka_poll_cb (rd_kafka_t *rk, rd_kafka_q_t *rkq, rd_kafka_op_t *rko,
@@ -3558,6 +3608,16 @@ rd_kafka_poll_cb (rd_kafka_t *rk, rd_kafka_q_t *rkq, rd_kafka_op_t *rko,
                         return RD_KAFKA_OP_RES_PASS; /* Don't handle here */
 
                 /* Op is silently destroyed below */
+                break;
+
+        case RD_KAFKA_OP_TXN:
+                /* Must only be handled by rdkafka main thread */
+                rd_assert(thrd_is_current(rk->rk_thread));
+                res = rd_kafka_op_call(rk, rkq, rko);
+                break;
+
+        case RD_KAFKA_OP_PURGE:
+                rd_kafka_purge(rk, rko->rko_u.purge.flags);
                 break;
 
         default:
@@ -3992,7 +4052,12 @@ rd_kafka_resp_err_t rd_kafka_purge (rd_kafka_t *rk, int purge_flags) {
  * @returns a csv string of purge flags in thread-local storage
  */
 const char *rd_kafka_purge_flags2str (int flags) {
-        static const char *names[] = { "queue", "inflight", NULL };
+        static const char *names[] = {
+                "queue",
+                "inflight",
+                "non-blocking",
+                NULL
+        };
         static RD_TLS char ret[64];
 
         return rd_flags2str(ret, sizeof(ret), names, flags);

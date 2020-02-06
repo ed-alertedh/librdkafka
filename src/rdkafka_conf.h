@@ -64,7 +64,7 @@ rd_kafka_compression2str (rd_kafka_compression_t compr) {
         };
         static RD_TLS char ret[32];
 
-        if (compr < 0 || compr >= RD_KAFKA_COMPRESSION_NUM) {
+        if ((int)compr < 0 || compr >= RD_KAFKA_COMPRESSION_NUM) {
                 rd_snprintf(ret, sizeof(ret),
                             "codec0x%x?", (int)compr);
                 return ret;
@@ -367,10 +367,18 @@ struct rd_kafka_conf_s {
 	 * Producer configuration
 	 */
         struct {
+                /*
+                 * Idempotence
+                 */
                 int    idempotence;  /**< Enable Idempotent Producer */
                 rd_bool_t gapless;   /**< Raise fatal error if
                                       *   gapless guarantee can't be
                                       *   satisfied. */
+                /*
+                 * Transactions
+                 */
+                char *transactional_id;       /**< Transactional Id */
+                int   transaction_timeout_ms; /**< Transaction timeout */
         } eos;
 	int    queue_buffering_max_msgs;
 	int    queue_buffering_max_kbytes;
