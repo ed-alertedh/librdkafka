@@ -29,6 +29,28 @@ matrix:
    compiler: clang
    before_script:
     - ./configure --install-deps --disable-lz4-ext --prefix="$PWD/dest" --enable-static
+ - name: "Linux MinGW-w64"
+   os: linux
+   compiler: x86_64-w64-mingw32-gcc
+   before_script:
+    - cmake -B"$PWD/dest" -DMINGW_BUILD:BOOL=ON \
+      -DRDKAFKA_BUILD_EXAMPLES:BOOL=ON \
+      -DRDKAFKA_BUILD_TESTS:BOOL=ON \
+      -DWITH_LIBDL:BOOL=OFF \
+      -DWITH_PLUGINS:BOOL=ON \
+      -DWITH_SASL:BOOL=OFF \
+      -DWITH_SSL:BOOL=OFF \
+      -DWITH_ZLIB:BOOL=OFF \
+      -DRDKAFKA_BUILD_STATIC:BOOL=OFF \
+      -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS:BOOL=TRUE .
+   addons:
+    apt:
+     packages:
+      - gcc-mingw-w64-base
+      - binutils-mingw-w64-x86-64
+      - gcc-mingw-w64-x86-64
+      - gcc-mingw-w64
+      - g++-mingw-w64-x86-64
  - name: "Linux GCC: +integration-tests +copyright-check +doc-check"
    os: linux
    dist: xenial
