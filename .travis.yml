@@ -76,7 +76,7 @@ matrix:
     - ./packaging/tools/rdutcoverage.sh
 
 install:
- - ccache -s || echo "CCache is not available."
+#  - ccache -s || echo "CCache is not available."
  - rm -rf artifacts dest
  - mkdir dest artifacts
 
