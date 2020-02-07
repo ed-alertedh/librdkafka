@@ -33,7 +33,7 @@ matrix:
    os: linux
    compiler: x86_64-w64-mingw32-gcc
    before_script:
-    - pushd "$PWD/dest" && cmake -B -DCMAKE_TOOLCHAIN_FILE=mingw_toolchain.cmake \
+    - mkdir -p "$PWD/dest" && pushd "$PWD/dest" && /bin/cmake -B. -H.. -DCMAKE_TOOLCHAIN_FILE=mingw_toolchain.cmake \
       -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON \
       -DMINGW_BUILD:BOOL=ON \
       -DWITHOUT_WIN32_CONFIG:BOOL=ON \
@@ -45,7 +45,7 @@ matrix:
       -DWITH_SSL:BOOL=OFF \
       -DWITH_ZLIB:BOOL=OFF \
       -DRDKAFKA_BUILD_STATIC:BOOL=OFF \
-      -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS:BOOL=TRUE .. && popd 
+      -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS:BOOL=TRUE && make && popd
    addons:
     apt:
      packages:
@@ -81,15 +81,15 @@ install:
  - mkdir dest artifacts
 
 before_script:
-script:
-- make -j2 all examples check && make -j2 -C tests build
-- if [[ $RUN_INTEGRATION_TESTS != y ]]; then make -C tests run_local_quick ; fi
-- make install
-- if [[ -z $NO_ARTIFACTS ]]; then (cd dest && tar cvzf ../artifacts/librdkafka-${CC}.tar.gz .) ; fi
-- for distro in $ADDITIONAL_BUILDS ; do packaging/tools/distro-build.sh $distro || exit 1 ; done
-- if [[ $COPYRIGHT_CHECK == y ]]; then make copyright-check ; fi
-- if [[ $DOC_CHECK == y ]]; then make docs ; fi
-- if [[ $RUN_INTEGRATION_TESTS == y ]]; then (cd tests && ./interactive_broker_version.py -c "make quick" 2.3.0) ; fi
+# script:
+# - make -j2 all examples check && make -j2 -C tests build
+# - if [[ $RUN_INTEGRATION_TESTS != y ]]; then make -C tests run_local_quick ; fi
+# - make install
+# - if [[ -z $NO_ARTIFACTS ]]; then (cd dest && tar cvzf ../artifacts/librdkafka-${CC}.tar.gz .) ; fi
+# - for distro in $ADDITIONAL_BUILDS ; do packaging/tools/distro-build.sh $distro || exit 1 ; done
+# - if [[ $COPYRIGHT_CHECK == y ]]; then make copyright-check ; fi
+# - if [[ $DOC_CHECK == y ]]; then make docs ; fi
+# - if [[ $RUN_INTEGRATION_TESTS == y ]]; then (cd tests && ./interactive_broker_version.py -c "make quick" 2.3.0) ; fi
 
 deploy:
   provider: s3
