@@ -15,6 +15,9 @@ case $distro in
     debian)
         docker run -it -v "$PWD:/v" microsoft/dotnet:2-sdk /v/packaging/tools/build-debian.sh /v /v/artifacts/librdkafka-debian9.tgz
         ;;
+    mingw)
+        docker run -it -v "$PWD:/v" bincrafters/docker-mingw-gcc7:latest /v/packaging/tools/build-mingw.sh /v /v/artifacts/librdkafka-mingw.tgz
+        ;;
     alpine)
         packaging/alpine/build-alpine.sh
         ;;
