@@ -34,7 +34,7 @@ matrix:
    compiler: x86_64-w64-mingw32-gcc
    before_script:
     - pushd "dest"
-    - cmake -B. -H.. -DCMAKE_TOOLCHAIN_FILE=mingw_toolchain.cmake \
+    - cmake -B. -H.. -DCMAKE_TOOLCHAIN_FILE=../mingw_toolchain.cmake \
       -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON \
       -DMINGW_BUILD:BOOL=ON \
       -DWITHOUT_WIN32_CONFIG:BOOL=ON \
