@@ -33,7 +33,7 @@ matrix:
    os: linux
    compiler: x86_64-w64-mingw32-gcc
    before_script:
-    - mkdir -p "$PWD/dest" && pushd "$PWD/dest" && /bin/cmake -B. -H.. -DCMAKE_TOOLCHAIN_FILE=mingw_toolchain.cmake \
+    - mkdir -p "$PWD/dest" && pushd "$PWD/dest" && cmake -B. -H.. -DCMAKE_TOOLCHAIN_FILE=mingw_toolchain.cmake \
       -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON \
       -DMINGW_BUILD:BOOL=ON \
       -DWITHOUT_WIN32_CONFIG:BOOL=ON \
