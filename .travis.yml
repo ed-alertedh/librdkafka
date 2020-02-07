@@ -32,6 +32,7 @@ matrix:
  - name: "Linux MinGW-w64"
    os: linux
    compiler: x86_64-w64-mingw32-gcc
+   dist: xenial
    before_script:
     - pushd "dest"
     - cmake -B. -H.. -DCMAKE_TOOLCHAIN_FILE=../mingw_toolchain.cmake \
