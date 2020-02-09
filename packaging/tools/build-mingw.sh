@@ -23,8 +23,8 @@ fi
 
 set -u
 
-sudo apt-get update
-sudo apt-get install -y git-core make cmake gcc-mingw-w64-base binutils-mingw-w64-x86-64 gcc-mingw-w64-x86-64 gcc-mingw-w64 g++-mingw-w64-x86-64
+apt-get update
+apt-get install -y git-core make cmake gcc-mingw-w64-base binutils-mingw-w64-x86-64 gcc-mingw-w64-x86-64 gcc-mingw-w64 g++-mingw-w64-x86-64
 
 
 # Copy the librdkafka git archive to a new location to avoid messing
