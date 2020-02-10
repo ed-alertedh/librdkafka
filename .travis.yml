@@ -50,7 +50,8 @@ matrix:
       -DWITH_SSL:BOOL=OFF \
       -DWITH_ZLIB:BOOL=OFF \
       -DRDKAFKA_BUILD_STATIC:BOOL=OFF \
-      -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS:BOOL=TRUE ..
+      -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS:BOOL=TRUE
+    - ls -al
     - make
    addons:
     apt:
