@@ -33,7 +33,9 @@ matrix:
    os: linux
   #  compiler: x86_64-w64-mingw32-gcc
    dist: bionic
-   env: ADDITIONAL_BUILDS="mingw"
+   env:
+    - ADDITIONAL_BUILDS="mingw"
+    - VERBOSE=1
    before_script:
     - cd dest && cmake -B. -H.. -DCMAKE_TOOLCHAIN_FILE=../mingw_toolchain.cmake \
       -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON \
