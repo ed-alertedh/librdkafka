@@ -1,5 +1,5 @@
 language: c
-dist: xenial
+dist: bionic
 sudo: false
 # cache: ccache
 env:
@@ -35,21 +35,21 @@ matrix:
    dist: xenial
    before_script: []
    env: ADDITIONAL_BUILDS="mingw"
-    # - pushd "dest"
-    # - cmake -B. -H.. -DCMAKE_TOOLCHAIN_FILE=../mingw_toolchain.cmake \
-    #   -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON \
-    #   -DMINGW_BUILD:BOOL=ON \
-    #   -DWITHOUT_WIN32_CONFIG:BOOL=ON \
-    #   -DRDKAFKA_BUILD_EXAMPLES:BOOL=ON \
-    #   -DRDKAFKA_BUILD_TESTS:BOOL=ON \
-    #   -DWITH_LIBDL:BOOL=OFF \
-    #   -DWITH_PLUGINS:BOOL=OFF \
-    #   -DWITH_SASL:BOOL=OFF \
-    #   -DWITH_SSL:BOOL=OFF \
-    #   -DWITH_ZLIB:BOOL=OFF \
-    #   -DRDKAFKA_BUILD_STATIC:BOOL=OFF \
-    #   -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS:BOOL=TRUE ..
-    # - make
+    - pushd "dest"
+    - cmake -B. -H.. -DCMAKE_TOOLCHAIN_FILE=../mingw_toolchain.cmake \
+      -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON \
+      -DMINGW_BUILD:BOOL=ON \
+      -DWITHOUT_WIN32_CONFIG:BOOL=ON \
+      -DRDKAFKA_BUILD_EXAMPLES:BOOL=ON \
+      -DRDKAFKA_BUILD_TESTS:BOOL=ON \
+      -DWITH_LIBDL:BOOL=OFF \
+      -DWITH_PLUGINS:BOOL=OFF \
+      -DWITH_SASL:BOOL=OFF \
+      -DWITH_SSL:BOOL=OFF \
+      -DWITH_ZLIB:BOOL=OFF \
+      -DRDKAFKA_BUILD_STATIC:BOOL=OFF \
+      -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS:BOOL=TRUE ..
+    - make
    addons:
     apt:
      packages:
