@@ -33,8 +33,8 @@ matrix:
    os: linux
    compiler: x86_64-w64-mingw32-gcc
    dist: xenial
-   before_script: []
    env: ADDITIONAL_BUILDS="mingw"
+   before_script:
     - pushd "dest"
     - cmake -B. -H.. -DCMAKE_TOOLCHAIN_FILE=../mingw_toolchain.cmake \
       -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON \
