@@ -54,7 +54,7 @@ cmake -B$DEST_DIR -H$BUILD_DIR -DCMAKE_TOOLCHAIN_FILE=$BUILD_DIR/mingw_toolchain
       -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS:BOOL=TRUE
 
 pushd $DEST_DIR
-make -j
+make -j2
 
 # Tar up the output directory
 rm -rf CMakeFiles
