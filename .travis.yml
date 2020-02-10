@@ -35,10 +35,7 @@ matrix:
    dist: bionic
    env: ADDITIONAL_BUILDS="mingw"
    before_script:
-    - cat /usr/x86_64-w64-mingw32/include/winsock2.h
-    - pushd "dest"
-    - cmake -B. -H.. -DCMAKE_TOOLCHAIN_FILE=../mingw_toolchain.cmake \
-      -DCMAKE_C_FLAGS=-E \
+    - cd dest && cmake -B. -H.. -DCMAKE_TOOLCHAIN_FILE=../mingw_toolchain.cmake \
       -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON \
       -DMINGW_BUILD:BOOL=ON \
       -DWITHOUT_WIN32_CONFIG:BOOL=ON \
@@ -50,9 +47,7 @@ matrix:
       -DWITH_SSL:BOOL=OFF \
       -DWITH_ZLIB:BOOL=OFF \
       -DRDKAFKA_BUILD_STATIC:BOOL=OFF \
-      -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS:BOOL=TRUE
-    - ls -al
-    - make
+      -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS:BOOL=TRUE && make
    addons:
     apt:
      packages:
