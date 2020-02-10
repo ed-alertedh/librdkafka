@@ -32,7 +32,7 @@ matrix:
  - name: "Linux MinGW-w64"
    os: linux
    compiler: x86_64-w64-mingw32-gcc
-   dist: xenial
+   dist: bionic
    env: ADDITIONAL_BUILDS="mingw"
    before_script:
     - pushd "dest"
