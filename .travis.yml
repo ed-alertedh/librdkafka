@@ -29,40 +29,40 @@ matrix:
 #    compiler: clang
 #    before_script:
 #     - ./configure --install-deps --disable-lz4-ext --prefix="$PWD/dest" --enable-static
- - name: "Linux MinGW-w64"
-   os: linux
-   compiler: x86_64-w64-mingw32-gcc
-   dist: bionic
-   env:
-    - ADDITIONAL_BUILDS="mingw"
-    - SKIP_MAKE=y
-   before_script:
-    - cmake -DCMAKE_TOOLCHAIN_FILE=./packaging/mingw-w64/mingw_toolchain.cmake \
-      -DMINGW_BUILD:BOOL=ON \
-      -DWITHOUT_WIN32_CONFIG:BOOL=ON \
-      -DRDKAFKA_BUILD_EXAMPLES:BOOL=ON \
-      -DRDKAFKA_BUILD_TESTS:BOOL=ON \
-      -DWITH_LIBDL:BOOL=OFF \
-      -DWITH_PLUGINS:BOOL=OFF \
-      -DWITH_SASL:BOOL=OFF \
-      -DWITH_SSL:BOOL=OFF \
-      -DWITH_ZLIB:BOOL=OFF \
-      -DRDKAFKA_BUILD_STATIC:BOOL=OFF \
-      -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS:BOOL=TRUE . 1>&2 && make 1>&2
-   addons:
-    apt:
-     packages:
-      - gcc-mingw-w64-base
-      - binutils-mingw-w64-x86-64
-      - gcc-mingw-w64-x86-64
-      - gcc-mingw-w64
-      - g++-mingw-w64-x86-64
+#  - name: "Linux MinGW-w64"
+#    os: linux
+#    compiler: x86_64-w64-mingw32-gcc
+#    dist: bionic
+#    env:
+#     - ADDITIONAL_BUILDS="mingw"
+#     - SKIP_MAKE=y
+#    before_script:
+#     - cmake -DCMAKE_TOOLCHAIN_FILE=./packaging/mingw-w64/mingw_toolchain.cmake \
+#       -DMINGW_BUILD:BOOL=ON \
+#       -DWITHOUT_WIN32_CONFIG:BOOL=ON \
+#       -DRDKAFKA_BUILD_EXAMPLES:BOOL=ON \
+#       -DRDKAFKA_BUILD_TESTS:BOOL=ON \
+#       -DWITH_LIBDL:BOOL=OFF \
+#       -DWITH_PLUGINS:BOOL=OFF \
+#       -DWITH_SASL:BOOL=OFF \
+#       -DWITH_SSL:BOOL=OFF \
+#       -DWITH_ZLIB:BOOL=OFF \
+#       -DRDKAFKA_BUILD_STATIC:BOOL=OFF \
+#       -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS:BOOL=TRUE . 1>&2 && make 1>&2
+#    addons:
+#     apt:
+#      packages:
+#       - gcc-mingw-w64-base
+#       - binutils-mingw-w64-x86-64
+#       - gcc-mingw-w64-x86-64
+#       - gcc-mingw-w64
+#       - g++-mingw-w64-x86-64
  - name: "Windows MinGW-w64"
    os: windows
    env:
     - SKIP_MAKE=y
    before_script:
-    - cmake -G "MSYS Makefiles" -DCMAKE_TOOLCHAIN_FILE=./packaging/mingw-w64/mingw_toolchain.cmake \
+    - cmake -G "MSYS Makefiles" -DCMAKE_PREFIX_PATH=/mingw64/ -DCMAKE_TOOLCHAIN_FILE=./packaging/mingw-w64/mingw_toolchain.cmake \
       -DMINGW_BUILD:BOOL=ON \
       -DWITHOUT_WIN32_CONFIG:BOOL=ON \
       -DRDKAFKA_BUILD_EXAMPLES:BOOL=ON \
