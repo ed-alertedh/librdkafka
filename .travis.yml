@@ -38,7 +38,7 @@ matrix:
     - VERBOSE=1
    before_script:
     - echo | x86_64-w64-mingw32-gcc --sysroot=/usr/x86_64-w64-mingw32/ -E -Wp,-v - 1>&2
-    - cd dest && cmake -B. -H.. -DCMAKE_TOOLCHAIN_FILE=../mingw_toolchain.cmake \
+    - cmake -DCMAKE_TOOLCHAIN_FILE=./mingw_toolchain.cmake \
       -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON \
       -DMINGW_BUILD:BOOL=ON \
       -DWITHOUT_WIN32_CONFIG:BOOL=ON \
@@ -50,7 +50,7 @@ matrix:
       -DWITH_SSL:BOOL=OFF \
       -DWITH_ZLIB:BOOL=OFF \
       -DRDKAFKA_BUILD_STATIC:BOOL=OFF \
-      -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS:BOOL=TRUE .. 1>&2 && cat src/CMakeFiles/rdkafka.dir/includes_C.rsp 1>&2 && make 1>&2
+      -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS:BOOL=TRUE . 1>&2 && cat src/CMakeFiles/rdkafka.dir/includes_C.rsp 1>&2 && make 1>&2
    addons:
     apt:
      packages:
