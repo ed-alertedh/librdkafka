@@ -31,7 +31,7 @@ matrix:
 #     - ./configure --install-deps --disable-lz4-ext --prefix="$PWD/dest" --enable-static
  - name: "Linux MinGW-w64"
    os: linux
-   compiler: x86_64-w64-mingw32-gcc
+  #  compiler: x86_64-w64-mingw32-gcc
    dist: bionic
    env: ADDITIONAL_BUILDS="mingw"
    before_script:
