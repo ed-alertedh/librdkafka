@@ -38,6 +38,7 @@ matrix:
     - cat /usr/x86_64-w64-mingw32/include/winsock2.h
     - pushd "dest"
     - cmake -B. -H.. -DCMAKE_TOOLCHAIN_FILE=../mingw_toolchain.cmake \
+      -DCMAKE_C_FLAGS=-D \
       -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON \
       -DMINGW_BUILD:BOOL=ON \
       -DWITHOUT_WIN32_CONFIG:BOOL=ON \
