@@ -40,7 +40,6 @@ mkdir -p $DEST_DIR
 (cd $LRK_DIR ; git archive --format tar HEAD) | tar xf -
 
 cmake -B$DEST_DIR -H$BUILD_DIR -DCMAKE_TOOLCHAIN_FILE=$BUILD_DIR/mingw_toolchain.cmake \
-      -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON \
       -DMINGW_BUILD:BOOL=ON \
       -DWITHOUT_WIN32_CONFIG:BOOL=ON \
       -DRDKAFKA_BUILD_EXAMPLES:BOOL=ON \
