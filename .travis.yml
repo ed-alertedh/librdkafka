@@ -50,7 +50,7 @@ matrix:
       -DWITH_SSL:BOOL=OFF \
       -DWITH_ZLIB:BOOL=OFF \
       -DRDKAFKA_BUILD_STATIC:BOOL=OFF \
-      -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS:BOOL=TRUE . 1>&2 && cd /home/travis/build/edenhill/librdkafka/src && /usr/bin/x86_64-w64-mingw32-gcc -E --sysroot=/usr/x86_64-w64-mingw32 -DENABLE_DEVEL=0 -DLIBRDKAFKA_EXPORTS -DWITHOUT_WIN32_CONFIG -Drdkafka_EXPORTS @CMakeFiles/rdkafka.dir/includes_C.rsp  -o CMakeFiles/rdkafka.dir/crc32c.c.obj   -c /home/travis/build/edenhill/librdkafka/src/crc32c.c 1>&2 && cat CMakeFiles/rdkafka.dir/crc32c.c.obj 1>&2
+      -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS:BOOL=TRUE . 1>&2 && make 1>&2
    addons:
     apt:
      packages:
