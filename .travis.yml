@@ -1,5 +1,5 @@
 language: c
-dist: bionic
+dist: trusty
 sudo: false
 cache: ccache
 env:
