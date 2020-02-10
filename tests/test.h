@@ -57,9 +57,6 @@
 
 #include "testshared.h"
 #ifdef _WIN32
-#ifdef __MINGW32__
-#include <stdio_s.h>
-#endif
 #define sscanf(...) sscanf_s(__VA_ARGS__)
 #endif
 
