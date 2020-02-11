@@ -5,11 +5,7 @@ env:
  global:
   - ARCH=x64
 
-cache:
-    directories:
-    - ccache
-    - $HOME/AppData/Local/Temp/chocolatey
-    - /C/tools/msys64
+cache: ccache
 
 matrix:
  include:
@@ -83,7 +79,6 @@ matrix:
     - $mingw64 mingw32-make 1>&2
     - cp /mingw64/bin/{libwinpthread-1.dll,libgcc_s_seh-1.dll,libstdc++-6.dll} src/librdkafka.dll src-cpp/librdkafka++.dll ./tests
     - cd tests && ./test-runner.exe -l -Q -p1 && ./test-runner.exe -l -Q -p1 -P
-    - echo done
  - name: "Linux GCC: +integration-tests +copyright-check +doc-check"
    os: linux
    dist: xenial
