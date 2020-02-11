@@ -126,11 +126,6 @@ static RD_INLINE const char *rd_ctime (const time_t *t) {
 
 #ifndef _WIN32
 	ctime_r(t, ret);
-#elif defined(__MINGW32__)
-        // older versions of MinGW don't implement
-        // ctime_r or ctime_s (could add a configure-time check for this?)
-        if (strftime(ret, sizeof(ret) - 1, "%a %b %d %H:%M:%S %Y\n", localtime(t)) == 0)
-		ret[0] = '\0';
 #else
 	ctime_s(ret, sizeof(ret), t);
 #endif
