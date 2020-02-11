@@ -60,7 +60,7 @@ matrix:
  - name: "Windows MinGW-w64"
    os: windows
    env:
-    - SKIP_MAKE=y
+    - SKIP_MAKE=y NO_ARTIFACTS=y
    before_script:
     - $mingw64 cmake -DCMAKE_MAKE_PROGRAM=mingw32-make -G "MSYS Makefiles" -DCMAKE_TOOLCHAIN_FILE=./packaging/mingw-w64/msys2_mingw_toolchain.cmake \
       -DMINGW_BUILD:BOOL=ON \
