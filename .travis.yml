@@ -62,7 +62,7 @@ matrix:
    env:
     - SKIP_MAKE=y
    before_script:
-    - $msys2 cmake -G "MSYS Makefiles" -DCMAKE_TOOLCHAIN_FILE=./packaging/mingw-w64/mingw_toolchain.cmake \
+    - $shell cmake -G "MSYS Makefiles" -DCMAKE_TOOLCHAIN_FILE=./packaging/mingw-w64/mingw_toolchain.cmake \
       -DMINGW_BUILD:BOOL=ON \
       -DWITHOUT_WIN32_CONFIG:BOOL=ON \
       -DRDKAFKA_BUILD_EXAMPLES:BOOL=ON \
@@ -73,11 +73,9 @@ matrix:
       -DWITH_SSL:BOOL=OFF \
       -DWITH_ZLIB:BOOL=OFF \
       -DRDKAFKA_BUILD_STATIC:BOOL=OFF \
-      -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS:BOOL=TRUE . 1>&2 && cat Makefile && $msys2 make 1>&2
-   cache:
-     directories:
-     - $HOME/AppData/Local/Temp/chocolatey
-     - /C/tools/msys64
+      -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS:BOOL=TRUE . 1>&2
+    - cat Makefile
+    - $shell make 1>&2
 #  - name: "Linux GCC: +integration-tests +copyright-check +doc-check"
 #    os: linux
 #    dist: xenial
