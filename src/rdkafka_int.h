@@ -31,7 +31,6 @@
 
 #ifndef _WIN32
 #define _GNU_SOURCE  /* for strndup() */
-#include <syslog.h>
 #endif
 
 #ifdef _MSC_VER
@@ -59,7 +58,7 @@ typedef int mode_t;
 
 
 
-typedef struct rd_kafka_itopic_s rd_kafka_itopic_t;
+typedef struct rd_kafka_topic_s rd_kafka_topic_t;
 typedef struct rd_ikafka_s rd_ikafka_t;
 
 
@@ -78,14 +77,10 @@ rd_kafka_crash (const char *file, int line, const char *function,
 
 /* Forward declarations */
 struct rd_kafka_s;
-struct rd_kafka_itopic_s;
+struct rd_kafka_topic_s;
 struct rd_kafka_msg_s;
 struct rd_kafka_broker_s;
 struct rd_kafka_toppar_s;
-
-typedef RD_SHARED_PTR_TYPE(, struct rd_kafka_toppar_s) shptr_rd_kafka_toppar_t;
-typedef RD_SHARED_PTR_TYPE(, struct rd_kafka_itopic_s) shptr_rd_kafka_itopic_t;
-
 
 
 #include "rdkafka_op.h"
@@ -218,8 +213,6 @@ rd_kafka_txn_state2str (rd_kafka_txn_state_t state) {
  * Kafka handle, internal representation of the application's rd_kafka_t.
  */
 
-typedef RD_SHARED_PTR_TYPE(shptr_rd_ikafka_s, rd_ikafka_t) shptr_rd_ikafka_t;
-
 struct rd_kafka_s {
 	rd_kafka_q_t *rk_rep;   /* kafka -> application reply queue */
 	rd_kafka_q_t *rk_ops;   /* any -> rdkafka main thread ops */
@@ -251,7 +244,7 @@ struct rd_kafka_s {
          * state changes. Protected by rk_broker_state_change_lock. */
         rd_list_t rk_broker_state_change_waiters; /**< (rd_kafka_enq_once_t*) */
 
-	TAILQ_HEAD(, rd_kafka_itopic_s)  rk_topics;
+	TAILQ_HEAD(, rd_kafka_topic_s)  rk_topics;
 	int              rk_topic_cnt;
 
         struct rd_kafka_cgrp_s *rk_cgrp;
@@ -262,7 +255,6 @@ struct rd_kafka_s {
 	rd_kafkap_str_t *rk_client_id;
         rd_kafkap_str_t *rk_group_id;    /* Consumer group id */
 
-	int              rk_flags;
 	rd_atomic32_t    rk_terminate;   /**< Set to RD_KAFKA_DESTROY_F_..
                                           *   flags instance
                                           *   is being destroyed.
@@ -338,6 +330,13 @@ struct rd_kafka_s {
         char            *rk_clusterid;      /* ClusterId from metadata */
         int32_t          rk_controllerid;   /* ControllerId from metadata */
 
+        /**< Producer: Delivery report mode */
+        enum {
+                RD_KAFKA_DR_MODE_NONE,  /**< No delivery reports */
+                RD_KAFKA_DR_MODE_CB,    /**< Delivery reports through callback */
+                RD_KAFKA_DR_MODE_EVENT, /**< Delivery reports through event API*/
+        } rk_drmode;
+
         /* Simple consumer count:
          *  >0: Running in legacy / Simple Consumer mode,
          *   0: No consumers running
@@ -406,8 +405,14 @@ struct rd_kafka_s {
                         int flags;            /**< Flags */
 #define RD_KAFKA_TXN_CURR_API_F_ABORT_ON_TIMEOUT 0x1 /**< Set state to abortable
                                                       *   error on timeout,
-                                                      *   i.e., fail the txn */
-#define RD_KAFKA_TXN_CURR_API_F_FOR_REUSE 0x2        /**< Do not reset the
+                                                      *   i.e., fail the txn,
+                                                      *   and set txn_requires_abort
+                                                      *   on the returned error.
+                                                      */
+#define RD_KAFKA_TXN_CURR_API_F_RETRIABLE_ON_TIMEOUT 0x2 /**< Set retriable flag
+                                                          *   on the error
+                                                          *   on timeout. */
+#define RD_KAFKA_TXN_CURR_API_F_FOR_REUSE 0x4        /**< Do not reset the
                                                       *   current API when it
                                                       *   completes successfully
                                                       *   Instead keep it alive
@@ -415,7 +420,7 @@ struct rd_kafka_s {
                                                       *   .._F_REUSE, blocking
                                                       *   any non-F_REUSE
                                                       *   curr API calls. */
-#define RD_KAFKA_TXN_CURR_API_F_REUSE     0x4        /**< Reuse/continue with
+#define RD_KAFKA_TXN_CURR_API_F_REUSE     0x8        /**< Reuse/continue with
                                                       *   current API state.
                                                       *   This is used for
                                                       *   multi-stage APIs,
@@ -472,6 +477,9 @@ struct rd_kafka_s {
 
                 /**< Current transaction error string, if any. */
                 char               *txn_errstr;
+
+                /**< Last InitProducerIdRequest error. */
+                rd_kafka_resp_err_t txn_init_err;
 
                 /**< Waiting for transaction coordinator query response */
                 rd_bool_t           txn_wait_coord;
@@ -651,7 +659,8 @@ rd_kafka_curr_msgs_sub (rd_kafka_t *rk, unsigned int cnt, size_t size) {
 
         /* If the subtraction would pass one of the thresholds
          * broadcast a wake-up to any waiting listeners. */
-        if ((rk->rk_curr_msgs.cnt >= rk->rk_curr_msgs.max_cnt &&
+        if ((rk->rk_curr_msgs.cnt - cnt == 0) ||
+            (rk->rk_curr_msgs.cnt >= rk->rk_curr_msgs.max_cnt &&
              rk->rk_curr_msgs.cnt - cnt < rk->rk_curr_msgs.max_cnt) ||
             (rk->rk_curr_msgs.size >= rk->rk_curr_msgs.max_size &&
              rk->rk_curr_msgs.size - size < rk->rk_curr_msgs.max_size))
@@ -693,6 +702,25 @@ rd_kafka_curr_msgs_cnt (rd_kafka_t *rk) {
 	return cnt;
 }
 
+/**
+ * @brief Wait until \p tspec for curr_msgs to reach 0.
+ *
+ * @returns remaining curr_msgs
+ */
+static RD_INLINE RD_UNUSED int
+rd_kafka_curr_msgs_wait_zero (rd_kafka_t *rk, const struct timespec *tspec) {
+        int cnt;
+
+        mtx_lock(&rk->rk_curr_msgs.lock);
+        while ((cnt = rk->rk_curr_msgs.cnt) > 0) {
+                cnd_timedwait_abs(&rk->rk_curr_msgs.cnd,
+                                  &rk->rk_curr_msgs.lock,
+                                  tspec);
+        }
+        mtx_unlock(&rk->rk_curr_msgs.lock);
+
+        return cnt;
+}
 
 void rd_kafka_destroy_final (rd_kafka_t *rk);
 
@@ -878,7 +906,7 @@ rd_kafka_op_res_t
 rd_kafka_poll_cb (rd_kafka_t *rk, rd_kafka_q_t *rkq, rd_kafka_op_t *rko,
                   rd_kafka_q_cb_type_t cb_type, void *opaque);
 
-rd_kafka_resp_err_t rd_kafka_subscribe_rkt (rd_kafka_itopic_t *rkt);
+rd_kafka_resp_err_t rd_kafka_subscribe_rkt (rd_kafka_topic_t *rkt);
 
 
 /**

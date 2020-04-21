@@ -32,6 +32,7 @@
 #include "rdkafka_op.h"
 #include "rdkafka_topic.h"
 #include "rdkafka_partition.h"
+#include "rdkafka_proto.h"
 #include "rdkafka_offset.h"
 
 /* Current number of rd_kafka_op_t */
@@ -113,12 +114,12 @@ void rd_kafka_op_print (FILE *fp, const char *prefix, rd_kafka_op_t *rko) {
 #endif
 			);
 	if (rko->rko_rktp) {
-		rd_kafka_toppar_t *rktp = rd_kafka_toppar_s2i(rko->rko_rktp);
 		fprintf(fp, "%s ((rd_kafka_toppar_t*)%p) "
-			"%s [%"PRId32"] v%d (shptr %p)\n",
-			prefix, rktp, rktp->rktp_rkt->rkt_topic->str,
-			rktp->rktp_partition,
-			rd_atomic32_get(&rktp->rktp_version), rko->rko_rktp);
+			"%s [%"PRId32"] v%d\n",
+			prefix, rko->rko_rktp,
+                        rko->rko_rktp->rktp_rkt->rkt_topic->str,
+			rko->rko_rktp->rktp_partition,
+			rd_atomic32_get(&rko->rko_rktp->rktp_version));
 	}
 
 	switch (rko->rko_type & ~RD_KAFKA_OP_FLAGMASK)
@@ -137,9 +138,8 @@ void rd_kafka_op_print (FILE *fp, const char *prefix, rd_kafka_op_t *rko) {
 	case RD_KAFKA_OP_DR:
 		fprintf(fp, "%s %"PRId32" messages on %s\n", prefix,
 			rko->rko_u.dr.msgq.rkmq_msg_cnt,
-			rko->rko_u.dr.s_rkt ?
-			rd_kafka_topic_s2i(rko->rko_u.dr.s_rkt)->
-			rkt_topic->str : "(n/a)");
+			rko->rko_u.dr.rkt ?
+			rko->rko_u.dr.rkt->rkt_topic->str : "(n/a)");
 		break;
 	case RD_KAFKA_OP_OFFSET_COMMIT:
 		fprintf(fp, "%s Callback: %p (opaque %p)\n",
@@ -299,8 +299,8 @@ void rd_kafka_op_destroy (rd_kafka_op_t *rko) {
 		if (rko->rko_u.dr.do_purge2)
 			rd_kafka_msgq_purge(rko->rko_rk, &rko->rko_u.dr.msgq2);
 
-		if (rko->rko_u.dr.s_rkt)
-			rd_kafka_topic_destroy0(rko->rko_u.dr.s_rkt);
+		if (rko->rko_u.dr.rkt)
+			rd_kafka_topic_destroy0(rko->rko_u.dr.rkt);
 		break;
 
 	case RD_KAFKA_OP_OFFSET_RESET:
@@ -331,6 +331,7 @@ void rd_kafka_op_destroy (rd_kafka_op_t *rko) {
 
         case RD_KAFKA_OP_MOCK:
                 RD_IF_FREE(rko->rko_u.mock.name, rd_free);
+                RD_IF_FREE(rko->rko_u.mock.str, rd_free);
                 break;
 
         case RD_KAFKA_OP_BROKER_MONITOR:
@@ -338,10 +339,10 @@ void rd_kafka_op_destroy (rd_kafka_op_t *rko) {
                 break;
 
         case RD_KAFKA_OP_TXN:
-                RD_IF_FREE(rko->rko_u.txn.errstr, rd_free);
                 RD_IF_FREE(rko->rko_u.txn.group_id, rd_free);
                 RD_IF_FREE(rko->rko_u.txn.offsets,
                            rd_kafka_topic_partition_list_destroy);
+                RD_IF_FREE(rko->rko_u.txn.error, rd_kafka_error_destroy);
                 break;
 
 	default:
@@ -423,8 +424,7 @@ rd_kafka_op_t *rd_kafka_op_new_reply (rd_kafka_op_t *rko_orig,
 	rd_kafka_op_get_reply_version(rko, rko_orig);
 	rko->rko_err     = err;
 	if (rko_orig->rko_rktp)
-		rko->rko_rktp = rd_kafka_toppar_keep(
-			rd_kafka_toppar_s2i(rko_orig->rko_rktp));
+		rko->rko_rktp = rd_kafka_toppar_keep(rko_orig->rko_rktp);
 
         return rko;
 }
@@ -550,6 +550,31 @@ rd_kafka_op_res_t rd_kafka_op_call (rd_kafka_t *rk, rd_kafka_q_t *rkq,
 
 
 /**
+ * @brief Creates a new RD_KAFKA_OP_FETCH op representing a
+ *        control message. The rkm_flags property is set to
+ *        RD_KAFKA_MSG_F_CONTROL.
+ */
+rd_kafka_op_t *
+rd_kafka_op_new_ctrl_msg (rd_kafka_toppar_t *rktp,
+                           int32_t version,
+                           rd_kafka_buf_t *rkbuf,
+                           int64_t offset) {
+        rd_kafka_msg_t *rkm;
+        rd_kafka_op_t *rko;
+
+        rko = rd_kafka_op_new_fetch_msg(
+                &rkm,
+                rktp, version, rkbuf,
+                offset,
+                0, NULL,
+                0, NULL);
+
+        rkm->rkm_flags |= RD_KAFKA_MSG_F_CONTROL;
+
+        return rko;
+}
+
+/**
  * @brief Creates a new RD_KAFKA_OP_FETCH op and sets up the
  *        embedded message according to the parameters.
  *
@@ -637,7 +662,12 @@ rd_kafka_op_handle_std (rd_kafka_t *rk, rd_kafka_q_t *rkq,
                         rd_kafka_op_t *rko, int cb_type) {
         if (cb_type == RD_KAFKA_Q_CB_FORCE_RETURN)
                 return RD_KAFKA_OP_RES_PASS;
-        else if (cb_type != RD_KAFKA_Q_CB_EVENT &&
+        else if (unlikely(rd_kafka_op_is_ctrl_msg(rko))) {
+                /* Control messages must not be exposed to the application
+                 * but we need to store their offsets. */
+                rd_kafka_op_offset_store(rk, rko);
+                return RD_KAFKA_OP_RES_HANDLED;
+        } else if (cb_type != RD_KAFKA_Q_CB_EVENT &&
                  rko->rko_type & RD_KAFKA_OP_CB)
                 return rd_kafka_op_call(rk, rkq, rko);
         else if (rko->rko_type == RD_KAFKA_OP_RECV_BUF) /* Handle Response */
@@ -698,22 +728,26 @@ rd_kafka_op_handle (rd_kafka_t *rk, rd_kafka_q_t *rkq, rd_kafka_op_t *rko,
 
 /**
  * @brief Store offset for fetched message.
+ *
+ * @locks rktp_lock and rk_lock MUST NOT be held
  */
-void rd_kafka_op_offset_store (rd_kafka_t *rk, rd_kafka_op_t *rko,
-			       const rd_kafka_message_t *rkmessage) {
+void rd_kafka_op_offset_store (rd_kafka_t *rk, rd_kafka_op_t *rko) {
 	rd_kafka_toppar_t *rktp;
+        int64_t offset;
 
 	if (unlikely(rko->rko_type != RD_KAFKA_OP_FETCH || rko->rko_err))
 		return;
 
-	rktp = rd_kafka_toppar_s2i(rko->rko_rktp);
+	rktp = rko->rko_rktp;
 
 	if (unlikely(!rk))
 		rk = rktp->rktp_rkt->rkt_rk;
 
+        offset = rko->rko_u.fetch.rkm.rkm_rkmessage.offset + 1;
+
 	rd_kafka_toppar_lock(rktp);
-	rktp->rktp_app_offset = rkmessage->offset+1;
+	rktp->rktp_app_offset = offset;
 	if (rk->rk_conf.enable_auto_offset_store)
-		rd_kafka_offset_store0(rktp, rkmessage->offset+1, 0/*no lock*/);
+		rd_kafka_offset_store0(rktp, offset, 0/*no lock*/);
 	rd_kafka_toppar_unlock(rktp);
 }

@@ -37,6 +37,7 @@
 #include "rdbuf.h"
 #include "crc32c.h"
 #include "rdmurmur2.h"
+#include "rdfnv1a.h"
 #if WITH_HDRHISTOGRAM
 #include "rdhdrhistogram.h"
 #endif
@@ -436,6 +437,10 @@ static int unittest_rdclock (void) {
 
 /**@}*/
 
+extern int unittest_cgrp (void);
+#if WITH_SASL_SCRAM
+extern int unittest_scram (void);
+#endif
 
 int rd_unittest (void) {
         int fails = 0;
@@ -443,12 +448,13 @@ int rd_unittest (void) {
                 const char *name;
                 int (*call) (void);
         } unittests[] = {
-                { "sysqueue", unittest_sysqueue },
-                { "rdbuf",    unittest_rdbuf },
-                { "rdvarint", unittest_rdvarint },
-                { "crc32c",   unittest_crc32c },
-                { "msg",      unittest_msg },
+                { "sysqueue",   unittest_sysqueue },
+                { "rdbuf",      unittest_rdbuf },
+                { "rdvarint",   unittest_rdvarint },
+                { "crc32c",     unittest_crc32c },
+                { "msg",        unittest_msg },
                 { "murmurhash", unittest_murmur2 },
+                { "fnv1a",      unittest_fnv1a },
 #if WITH_HDRHISTOGRAM
                 { "rdhdrhistogram", unittest_rdhdrhistogram },
 #endif
@@ -462,6 +468,10 @@ int rd_unittest (void) {
                 { "sasl_oauthbearer", unittest_sasl_oauthbearer },
 #endif
                 { "aborted_txns", unittest_aborted_txns },
+                { "cgrp", unittest_cgrp },
+#if WITH_SASL_SCRAM
+                { "scram", unittest_scram },
+#endif
                 { NULL }
         };
         int i;

@@ -67,7 +67,8 @@ typedef struct rd_kafka_replyq_s {
 #define RD_KAFKA_OP_F_BLOCKING    0x8  /* rkbuf: blocking protocol request */
 #define RD_KAFKA_OP_F_REPROCESS   0x10 /* cgrp: Reprocess at a later time. */
 #define RD_KAFKA_OP_F_SENT        0x20 /* rkbuf: request sent on wire */
-
+#define RD_KAFKA_OP_F_FLEXVER     0x40 /* rkbuf: flexible protocol version
+                                        *        (KIP-482) */
 
 typedef enum {
         RD_KAFKA_OP_NONE,     /* No specific type, use OP_CB */
@@ -218,7 +219,7 @@ struct rd_kafka_op_s {
         rd_kafka_prio_t       rko_prio;   /**< In-queue priority.
                                            *   Higher value means higher prio*/
 
-	shptr_rd_kafka_toppar_t *rko_rktp;
+	rd_kafka_toppar_t    *rko_rktp;
 
         /*
 	 * Generic fields
@@ -316,7 +317,7 @@ struct rd_kafka_op_s {
                 } metadata;
 
 		struct {
-			shptr_rd_kafka_itopic_t *s_rkt;
+			rd_kafka_topic_t *rkt;
 			rd_kafka_msgq_t msgq;
 			rd_kafka_msgq_t msgq2;
 			int do_purge2;
@@ -483,7 +484,7 @@ struct rd_kafka_op_s {
                 } broker_monitor;
 
                 struct {
-                        char *errstr;   /**< Error string, if rko_err is set */
+                        rd_kafka_error_t *error; /**< Error object */
                         char *group_id; /**< Consumer group id for commits */
                         int   timeout_ms; /**< Operation timeout */
                         rd_ts_t abs_timeout; /**< Absolute time */
@@ -555,6 +556,12 @@ rd_kafka_op_new_fetch_msg (rd_kafka_msg_t **rkmp,
                            size_t key_len, const void *key,
                            size_t val_len, const void *val);
 
+rd_kafka_op_t *
+rd_kafka_op_new_ctrl_msg (rd_kafka_toppar_t *rktp,
+                           int32_t version,
+                           rd_kafka_buf_t *rkbuf,
+                           int64_t offset);
+
 void rd_kafka_op_throttle_time (struct rd_kafka_broker_s *rkb,
 				rd_kafka_q_t *rkq,
 				int throttle_time);
@@ -570,7 +577,12 @@ extern rd_atomic32_t rd_kafka_op_cnt;
 
 void rd_kafka_op_print (FILE *fp, const char *prefix, rd_kafka_op_t *rko);
 
-void rd_kafka_op_offset_store (rd_kafka_t *rk, rd_kafka_op_t *rko,
-			       const rd_kafka_message_t *rkmessage);
+void rd_kafka_op_offset_store (rd_kafka_t *rk, rd_kafka_op_t *rko);
+
+
+#define rd_kafka_op_is_ctrl_msg(rko)                                    \
+        ((rko)->rko_type == RD_KAFKA_OP_FETCH &&                        \
+         !(rko)->rko_err &&                                             \
+         ((rko)->rko_u.fetch.rkm.rkm_flags & RD_KAFKA_MSG_F_CONTROL))
 
 #endif /* _RDKAFKA_OP_H_ */

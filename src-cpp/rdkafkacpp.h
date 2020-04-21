@@ -108,7 +108,7 @@ namespace RdKafka {
  * @remark This value should only be used during compile time,
  *         for runtime checks of version use RdKafka::version()
  */
-#define RD_KAFKA_VERSION  0x01040005
+#define RD_KAFKA_VERSION  0x010400ff
 
 /**
  * @brief Returns the librdkafka version as integer.
@@ -187,9 +187,9 @@ enum ErrorCode {
 	/** Produced message timed out*/
 	ERR__MSG_TIMED_OUT = -192,
 	/** Reached the end of the topic+partition queue on
-	 * the broker. Not really an error. 
-	 * This event is disabled by default,
-	 * see the `enable.partition.eof` configuration property. */
+	 *  the broker. Not really an error.
+	 *  This event is disabled by default,
+	 *  see the `enable.partition.eof` configuration property. */
 	ERR__PARTITION_EOF = -191,
 	/** Permanent: Partition does not exist in cluster. */
 	ERR__UNKNOWN_PARTITION = -190,
@@ -524,6 +524,79 @@ class KafkaConsumer;
 
 
 /**
+ * @name Error class
+ * @{
+ *
+ */
+
+/**
+ * @brief The Error class is used as a return value from APIs to propagate
+ *        an error. The error consists of an error code which is to be used
+ *        programatically, an error string for showing to the user,
+ *        and various error flags that can be used programmatically to decide
+ *        how to handle the error; e.g., should the operation be retried,
+ *        was it a fatal error, etc.
+ *
+ * Error objects must be deleted explicitly to free its resources.
+ */
+class RD_EXPORT Error {
+ public:
+
+ /**
+  * @brief Create error object.
+  */
+ static Error *create (ErrorCode code, const std::string *errstr);
+
+ virtual ~Error () { }
+
+ /*
+  * Error accessor methods
+  */
+
+ /**
+  * @returns the error code, e.g., RdKafka::ERR_UNKNOWN_MEMBER_ID.
+  */
+ virtual ErrorCode code () const = 0;
+
+ /**
+  * @returns the error code name, e.g, "ERR_UNKNOWN_MEMBER_ID".
+  */
+ virtual std::string name () const = 0;
+
+  /**
+   * @returns a human readable error string.
+   */
+ virtual std::string str () const = 0;
+
+ /**
+  * @returns true if the error is a fatal error, indicating that the client
+  *          instance is no longer usable, else false.
+  */
+ virtual bool is_fatal () const = 0;
+
+ /**
+  * @returns true if the operation may be retried, else false.
+  */
+ virtual bool is_retriable () const = 0;
+
+ /**
+  * @returns true if the error is an abortable transaction error in which case
+  *          the application must call RdKafka::Producer::abort_transaction()
+  *          and start a new transaction with
+  *          RdKafka::Producer::begin_transaction() if it wishes to proceed
+  *          with transactions.
+  *          Else returns false.
+  *
+  * @remark The return value of this method is only valid for errors returned
+  *         by the transactional API.
+  */
+ virtual bool txn_requires_abort () const = 0;
+};
+
+/**@}*/
+
+
+/**
  * @name Callback classes
  * @{
  *
@@ -575,7 +648,7 @@ class RD_EXPORT DeliveryReportCb {
  * The callback should invoke RdKafka::oauthbearer_set_token() or
  * RdKafka::oauthbearer_set_token_failure() to indicate success or failure,
  * respectively.
- * 
+ *
  * The refresh operation is eventable and may be received when an event
  * callback handler is set with an event type of
  * \c RdKafka::Event::EVENT_OAUTHBEARER_TOKEN_REFRESH.
@@ -837,7 +910,7 @@ public:
    *           consumer->unassign();
    *
    *         } else {
-   *           std::cerr << "Rebalancing error: <<
+   *           std::cerr << "Rebalancing error: " <<
    *                        RdKafka::err2str(err) << std::endl;
    *           consumer->unassign();
    *         }
@@ -1422,7 +1495,7 @@ class RD_EXPORT Handle {
    *
    * @returns The fetch queue for the given partition if successful. Else,
    *          NULL is returned.
-   *          
+   *
    * @remark This function only works on consumers.
    */
   virtual Queue *get_partition_queue (const TopicPartition *partition) = 0;
@@ -1556,10 +1629,10 @@ class RD_EXPORT Handle {
    * this method upon success. The extension keys must not include the reserved
    * key "`auth`", and all extension keys and values must conform to the
    * required format as per https://tools.ietf.org/html/rfc7628#section-3.1:
-   * 
+   *
    *     key            = 1*(ALPHA)
    *     value          = *(VCHAR / SP / HTAB / CR / LF )
-   * 
+   *
    * @returns \c RdKafka::ERR_NO_ERROR on success, otherwise \p errstr set
    *              and:<br>
    *          \c RdKafka::ERR__INVALID_ARG if any of the arguments are
@@ -1568,7 +1641,7 @@ class RD_EXPORT Handle {
    *              supported by this build;<br>
    *          \c RdKafka::ERR__STATE if SASL/OAUTHBEARER is supported but is
    *              not configured as the client's authentication mechanism.<br>
-   * 
+   *
    * @sa RdKafka::oauthbearer_set_token_failure
    * @sa RdKafka::Conf::set() \c "oauthbearer_token_refresh_cb"
    */
@@ -1708,11 +1781,12 @@ class RD_EXPORT Topic {
   virtual bool partition_available (int32_t partition) const = 0;
 
   /**
-   * @brief Store offset \p offset for topic partition \p partition.
-   * The offset will be committed (written) to the offset store according
-   * to \p auto.commit.interval.ms.
+   * @brief Store offset \p offset + 1 for topic partition \p partition.
+   * The offset will be committed (written) to the broker (or file) according
+   * to \p auto.commit.interval.ms or next manual offset-less commit call.
    *
-   * @remark \c enable.auto.offset.store must be set to \c false when using this API.
+   * @remark \c enable.auto.offset.store must be set to \c false when using
+   *         this API.
    *
    * @returns RdKafka::ERR_NO_ERROR on success or an error code if none of the
    *          offsets could be stored.
@@ -1780,7 +1854,7 @@ public:
  * Represents message headers.
  *
  * https://cwiki.apache.org/confluence/display/KAFKA/KIP-82+-+Add+Record+Headers
- * 
+ *
  * @remark Requires Apache Kafka >= 0.11.0 brokers
  */
 class RD_EXPORT Headers {
@@ -1921,24 +1995,24 @@ public:
 
   /**
    * @brief Create a new instance of the Headers object
-   * 
+   *
    * @returns an empty Headers list
    */
   static Headers *create();
 
   /**
    * @brief Create a new instance of the Headers object from a std::vector
-   * 
+   *
    * @param headers std::vector of RdKafka::Headers::Header objects.
    *                The headers are copied, not referenced.
-   * 
+   *
    * @returns a Headers list from std::vector set to the size of the std::vector
    */
   static Headers *create(const std::vector<Header> &headers);
 
   /**
    * @brief Adds a Header to the end of the list.
-   * 
+   *
    * @param key header key/name
    * @param value binary value, or NULL
    * @param value_size size of the value
@@ -1952,10 +2026,10 @@ public:
    * @brief Adds a Header to the end of the list.
    *
    * Convenience method for adding a std::string as a value for the header.
-   * 
+   *
    * @param key header key/name
    * @param value value string
-   * 
+   *
    * @returns an ErrorCode signalling success or failure to add the header.
    */
   virtual ErrorCode add(const std::string &key, const std::string &value) = 0;
@@ -1973,18 +2047,18 @@ public:
 
   /**
    * @brief Removes all the Headers of a given key
-   * 
+   *
    * @param key header key/name to remove
-   * 
+   *
    * @returns An ErrorCode signalling a success or failure to remove the Header.
    */
   virtual ErrorCode remove(const std::string &key) = 0;
 
   /**
    * @brief Gets all of the Headers of a given key
-   * 
+   *
    * @param key header key/name
-   * 
+   *
    * @remark If duplicate keys exist this will return them all as a std::vector
    *
    * @returns a std::vector containing all the Headers of the given key.
@@ -1993,9 +2067,9 @@ public:
 
   /**
    * @brief Gets the last occurrence of a Header of a given key
-   * 
+   *
    * @param key header key/name
-   * 
+   *
    * @remark This will only return the most recently added header
    *
    * @returns the Header if found, otherwise a Header with an err set to
@@ -2033,20 +2107,20 @@ class RD_EXPORT Message {
   /** @brief Message persistence status can be used by the application to
    *         find out if a produced message was persisted in the topic log. */
   enum Status {
-    /**< Message was never transmitted to the broker, or failed with
-     *   an error indicating it was not written to the log.
-     *   Application retry risks ordering, but not duplication. */
+    /** Message was never transmitted to the broker, or failed with
+     *  an error indicating it was not written to the log.
+     *  Application retry risks ordering, but not duplication. */
     MSG_STATUS_NOT_PERSISTED = 0,
 
-    /**< Message was transmitted to broker, but no acknowledgement was
-     *   received.
-     *   Application retry risks ordering and duplication. */
+    /** Message was transmitted to broker, but no acknowledgement was
+     *  received.
+     *  Application retry risks ordering and duplication. */
     MSG_STATUS_POSSIBLY_PERSISTED = 1,
 
-    /**< Message was written to the log and fully acknowledged.
-     *   No reason for application to retry.
-     *   Note: this value should only be trusted with \c acks=all. */
-    MSG_STATUS_PERSISTED =  2
+    /** Message was written to the log and fully acknowledged.
+     *  No reason for application to retry.
+     *  Note: this value should only be trusted with \c acks=all. */
+    MSG_STATUS_PERSISTED = 2,
   };
 
   /**
@@ -2176,7 +2250,7 @@ class RD_EXPORT Queue {
    * If \p dst is \c NULL, the forwarding is removed.
    *
    * The internal refcounts for both queues are increased.
-   * 
+   *
    * @remark Regardless of whether \p dst is NULL or not, after calling this
    *         function, \p src will not forward it's fetch queue to the consumer
    *         queue.
@@ -2228,6 +2302,23 @@ class RD_EXPORT Queue {
 
 /**@}*/
 
+/**
+ * @name ConsumerGroupMetadata
+ * @{
+ *
+ */
+/**
+ * @brief ConsumerGroupMetadata holds a consumer instance's group
+ *        metadata state.
+ *
+ * This class currently does not have any public methods.
+ */
+class RD_EXPORT ConsumerGroupMetadata {
+public:
+  virtual ~ConsumerGroupMetadata () = 0;
+};
+
+/**@}*/
 
 /**
  * @name KafkaConsumer
@@ -2363,6 +2454,8 @@ public:
   /**
    * @brief Commit offset for a single topic+partition based on \p message
    *
+   * @remark The offset committed will be the message's offset + 1.
+   *
    * @remark This is the synchronous variant.
    *
    * @sa RdKafka::KafkaConsummer::commitSync()
@@ -2371,6 +2464,8 @@ public:
 
   /**
    * @brief Commit offset for a single topic+partition based on \p message
+   *
+   * @remark The offset committed will be the message's offset + 1.
    *
    * @remark This is the asynchronous variant.
    *
@@ -2381,12 +2476,20 @@ public:
   /**
    * @brief Commit offsets for the provided list of partitions.
    *
+   * @remark The \c .offset of the partitions in \p offsets should be the
+   *         offset where consumption will resume, i.e., the last
+   *         processed offset + 1.
+   *
    * @remark This is the synchronous variant.
    */
   virtual ErrorCode commitSync (std::vector<TopicPartition*> &offsets) = 0;
 
   /**
    * @brief Commit offset for the provided list of partitions.
+   *
+   * @remark The \c .offset of the partitions in \p offsets should be the
+   *         offset where consumption will resume, i.e., the last
+   *         processed offset + 1.
    *
    * @remark This is the asynchronous variant.
    */
@@ -2494,7 +2597,10 @@ public:
    *
    * Per-partition success/error status propagated through TopicPartition.err()
    *
-   * @remark \c enable.auto.offset.store must be set to \c false when using this API.
+   * @remark The \c .offset field is stored as is, it will NOT be + 1.
+   *
+   * @remark \c enable.auto.offset.store must be set to \c false when using
+   *         this API.
    *
    * @returns RdKafka::ERR_NO_ERROR on success, or
    *          RdKafka::ERR___UNKNOWN_PARTITION if none of the offsets could
@@ -2502,6 +2608,21 @@ public:
    *          RdKafka::ERR___INVALID_ARG if \c enable.auto.offset.store is true.
    */
   virtual ErrorCode offsets_store (std::vector<TopicPartition*> &offsets) = 0;
+
+
+  /**
+   * @returns the current consumer group metadata associated with this consumer,
+   *          or NULL if the consumer is configured with a \c group.id.
+   *          This metadata object should be passed to the transactional
+   *          producer's RdKafka::Producer::send_offsets_to_transaction() API.
+   *
+   * @remark The returned object must be deleted by the application.
+   *
+   * @sa RdKafka::Producer::send_offsets_to_transaction()
+   */
+  virtual ConsumerGroupMetadata *groupMetadata () = 0;
+
+
 };
 
 
@@ -2772,7 +2893,7 @@ class RD_EXPORT Producer : public virtual Handle {
    *                   Messages are considered in-queue from the point they
    *                   are accepted by produce() until their corresponding
    *                   delivery report callback/event returns.
-   *                   It is thus a requirement to call 
+   *                   It is thus a requirement to call
    *                   poll() (or equiv.) from a separate
    *                   thread when RK_MSG_BLOCK is used.
    *                   See WARNING on \c RK_MSG_BLOCK above.
@@ -2927,50 +3048,148 @@ class RD_EXPORT Producer : public virtual Handle {
   };
 
   /**
-   * Transactional API
+   * @name Transactional API
+   * @{
    *
    * Requires Kafka broker version v0.11.0 or later
    *
-   * FIXME: These docs will be updated when the rdkafka.h docs have settled.
+   * See the Transactional API documentation in rdkafka.h for more information.
    */
 
   /**
-   * @brief
+   * @brief Initialize transactions for the producer instance.
    *
-   * FIXME blocking?
+   * @param timeout_ms The maximum time to block. On timeout the operation
+   *                   may continue in the background, depending on state,
+   *                   and it is okay to call init_transactions() again.
+   *
+   * @returns an RdKafka::Error object on error, or NULL on success.
+   *          Check whether the returned error object permits retrying
+   *          by calling RdKafka::Error::is_retriable(), or whether a fatal
+   *          error has been raised by calling RdKafka::Error::is_fatal().
+   *
+   * @remark The returned error object (if not NULL) must be deleted.
+   *
+   * See rd_kafka_init_transactions() in rdkafka.h for more information.
+   *
    */
-  virtual ErrorCode init_transactions (int timeout_ms,
-                                       std::string &errstr) = 0;
+  virtual Error *init_transactions (int timeout_ms) = 0;
+
 
   /**
-   * FIXME blocking?
+   * @brief init_transactions() must have been called successfully
+   *        (once) before this function is called.
+   *
+   * @returns an RdKafka::Error object on error, or NULL on success.
+   *          Check whether a fatal error has been raised by calling
+   *          RdKafka::Error::is_fatal_error().
+   *
+   * @remark The returned error object (if not NULL) must be deleted.
+   *
+   * See rd_kafka_begin_transaction() in rdkafka.h for more information.
    */
-  virtual ErrorCode begin_transaction (std::string &errstr) = 0;
+  virtual Error *begin_transaction () = 0;
 
   /**
-   * FIXME blocking?
+   * @brief Sends a list of topic partition offsets to the consumer group
+   *        coordinator for \p group_metadata, and marks the offsets as part
+   *        part of the current transaction.
+   *        These offsets will be considered committed only if the transaction
+   *        is committed successfully.
+   *
+   *        The offsets should be the next message your application will
+   *        consume,
+   *        i.e., the last processed message's offset + 1 for each partition.
+   *        Either track the offsets manually during processing or use
+   *        RdKafka::KafkaConsumer::position() (on the consumer) to get the
+   *        current offsets for
+   *        the partitions assigned to the consumer.
+   *
+   *        Use this method at the end of a consume-transform-produce loop prior
+   *        to committing the transaction with commit_transaction().
+   *
+   * @param offsets List of offsets to commit to the consumer group upon
+   *                successful commit of the transaction. Offsets should be
+   *                the next message to consume,
+   *                e.g., last processed message + 1.
+   * @param group_metadata The current consumer group metadata as returned by
+   *                   RdKafka::KafkaConsumer::groupMetadata() on the consumer
+   *                   instance the provided offsets were consumed from.
+   * @param timeout_ms Maximum time allowed to register the
+   *                   offsets on the broker.
+   *
+   * @remark This function must be called on the transactional producer
+   *         instance, not the consumer.
+   *
+   * @remark The consumer must disable auto commits
+   *         (set \c enable.auto.commit to false on the consumer).
+   *
+   * @returns an RdKafka::Error object on error, or NULL on success.
+   *          Check whether the returned error object permits retrying
+   *          by calling RdKafka::Error::is_retriable(), or whether an abortable
+   *          or fatal error has been raised by calling
+   *          RdKafka::Error::txn_requires_abort() or RdKafka::Error::is_fatal()
+   *          respectively.
+   *
+   * @remark The returned error object (if not NULL) must be deleted.
+   *
+   * See rd_kafka_send_offsets_to_transaction() in rdkafka.h for
+   * more information.
    */
-  virtual ErrorCode send_offsets_to_transaction (
+  virtual Error *send_offsets_to_transaction (
           const std::vector<TopicPartition*> &offsets,
-          const std::string &group_id,
-          int timeout_ms,
-          std::string &errstr) = 0;
+          const ConsumerGroupMetadata *group_metadata,
+          int timeout_ms) = 0;
 
   /**
-   * @brief
+   * @brief Commit the current transaction as started with begin_transaction().
    *
-   * FIXME blocking?
+   *        Any outstanding messages will be flushed (delivered) before actually
+   *        committing the transaction.
+   *
+   * @param timeout_ms The maximum time to block. On timeout the operation
+   *                   may continue in the background, depending on state,
+   *                   and it is okay to call this function again.
+   *
+   * @returns an RdKafka::Error object on error, or NULL on success.
+   *          Check whether the returned error object permits retrying
+   *          by calling RdKafka::Error::is_retriable(), or whether an abortable
+   *          or fatal error has been raised by calling
+   *          RdKafka::Error::txn_requires_abort() or RdKafka::Error::is_fatal()
+   *          respectively.
+   *
+   * @remark The returned error object (if not NULL) must be deleted.
+   *
+   * See rd_kafka_commit_transaction() in rdkafka.h for more information.
    */
-  virtual ErrorCode commit_transaction (int timeout_ms,
-                                        std::string &errstr) = 0;
+  virtual Error *commit_transaction (int timeout_ms) = 0;
 
   /**
-   * @brief
+   * @brief Aborts the ongoing transaction.
    *
-   * FIXME blocking?
+   *        This function should also be used to recover from non-fatal abortable
+   *        transaction errors.
+   *
+   *        Any outstanding messages will be purged and fail with
+   *        RdKafka::ERR__PURGE_INFLIGHT or RdKafka::ERR__PURGE_QUEUE.
+   *        See RdKafka::Producer::purge() for details.
+   *
+   * @param timeout_ms The maximum time to block. On timeout the operation
+   *                   may continue in the background, depending on state,
+   *                   and it is okay to call this function again.
+   *
+   * @returns an RdKafka::Error object on error, or NULL on success.
+   *          Check whether the returned error object permits retrying
+   *          by calling RdKafka::Error::is_retriable(), or whether a
+   *          fatal error has been raised by calling RdKafka::Error::is_fatal().
+   *
+   * @remark The returned error object (if not NULL) must be deleted.
+   *
+   * See rd_kafka_abort_transaction() in rdkafka.h for more information.
    */
-  virtual ErrorCode abort_transaction (int timeout_ms,
-                                       std::string &errstr) = 0;
+  virtual Error *abort_transaction (int timeout_ms) = 0;
+
+  /**@}*/
 };
 
 /**@}*/
@@ -3079,18 +3298,18 @@ class Metadata {
   typedef TopicMetadataVector::const_iterator  TopicMetadataIterator;
 
 
-  /** 
-  * @brief Broker list 
-  * @remark Ownership of the returned pointer is retained by the instance of
-  * Metadata that is called. 
-  */
+  /**
+   * @brief Broker list
+   * @remark Ownership of the returned pointer is retained by the instance of
+   * Metadata that is called.
+   */
   virtual const BrokerMetadataVector *brokers() const = 0;
 
-  /** 
-  * @brief Topic list 
-  * @remark Ownership of the returned pointer is retained by the instance of
-  * Metadata that is called. 
-  */
+  /**
+   * @brief Topic list
+   * @remark Ownership of the returned pointer is retained by the instance of
+   * Metadata that is called.
+   */
   virtual const TopicMetadataVector  *topics() const = 0;
 
   /** @brief Broker (id) originating this metadata */

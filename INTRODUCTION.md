@@ -53,6 +53,7 @@ librdkafka also provides a native C++ interface.
             - [Speeding up termination](#speeding-up-termination)
         - [Threads and callbacks](#threads-and-callbacks)
         - [Brokers](#brokers)
+            - [SSL](#ssl)
             - [Sparse connections](#sparse-connections)
                 - [Random broker selection](#random-broker-selection)
                 - [Persistent broker connections](#persistent-broker-connections)
@@ -86,6 +87,12 @@ librdkafka also provides a native C++ interface.
             - [Detailed description](#detailed-description)
         - [Supported KIPs](#supported-kips)
         - [Supported protocol versions](#supported-protocol-versions)
+- [Recommendations for language binding developers](#recommendations-for-language-binding-developers)
+    - [Expose the configuration interface pass-thru](#expose-the-configuration-interface-pass-thru)
+    - [Error constants](#error-constants)
+    - [Reporting client software name and version to broker](#reporting-client-software-name-and-version-to-broker)
+    - [Documentation reuse](#documentation-reuse)
+    - [Community support](#community-support)
 
 <!-- markdown-toc end -->
 
@@ -102,8 +109,9 @@ or if a low latency service is required, or a balance between the two, all
 through the configuration property interface.
 
 The single most important configuration properties for performance tuning is
-`linger.ms` - how long to wait for `batch.num.messages` to fill up in the
-local per-partition queue before sending the batch of messages to the broker.
+`linger.ms` - how long to wait for `batch.num.messages` or `batch.size` to
+fill up in the local per-partition queue before sending the batch of messages
+to the broker.
 
 In low throughput scenarios, a lower value improves latency.
 As throughput increases, the cost of each broker request becomes significant
@@ -123,8 +131,8 @@ overhead and eliminates the adverse effect of the round trip time (rtt).
 
 `linger.ms` (also called `queue.buffering.max.ms`) allows librdkafka to
 wait up to the specified amount of time to accumulate up to
-`batch.num.messages` in a single batch (MessageSet) before sending
-to the broker. The larger the batch the higher the throughput.
+`batch.num.messages` or `batch.size` in a single batch (MessageSet) before
+sending to the broker. The larger the batch the higher the throughput.
 Enabling `msg` debugging (set `debug` property to `msg`) will emit log
 messages for the accumulation process which lets you see what batch sizes
 are being produced.
@@ -238,8 +246,8 @@ configuration property.
 
 Compression is performed on the batch of messages in the local queue, the
 larger the batch the higher likelyhood of a higher compression ratio.
-The local batch queue size is controlled through the `batch.num.messages` and
-`linger.ms` configuration properties as described in the
+The local batch queue size is controlled through the `batch.num.messages`,
+`batch.size`, and `linger.ms` configuration properties as described in the
 **High throughput** chapter above.
 
 
@@ -717,65 +725,27 @@ This method should be called by the application on delivery report error.
 
 Using the transactional producer simplifies error handling compared to the
 standard or idempotent producer, a transactional application will only need
-to care about two different types of errors:
+to care about these different types of errors:
 
- * Fatal errors - the application must cease operations and destroy the
-   producer instance if any of the transactional APIs return
-   `RD_KAFKA_RESP_ERR__FATAL`. This is an unrecoverable type of error.
+ * Retriable errors - the operation failed due to temporary problems,
+   such as network timeouts, the operation may be safely retried.
+   Use `rd_kafka_error_is_retriable()` to distinguish this case.
  * Abortable errors - if any of the transactional APIs return a non-fatal
    error code the current transaction has failed and the application
    must call `rd_kafka_abort_transaction()`, rewind its input to the
    point before the current transaction started, and attempt a new transaction
    by calling `rd_kafka_begin_transaction()`, etc.
+   Use `rd_kafka_error_txn_requires_abort()` to distinguish this case.
+ * Fatal errors - the application must cease operations and destroy the
+   producer instance.
+   Use `rd_kafka_error_is_fatal()` to distinguish this case.
+ * For all other errors returned from the transactional API: the current
+   recommendation is to treat any error that has neither retriable, abortable,
+   or fatal set, as a fatal error.
 
 While the application should log the actual fatal or abortable errors, there
 is no need for the application to handle the underlying errors specifically.
 
-For fatal errors use `rd_kafka_fatal_error()` to extract the underlying
-error code and reason.
-For abortable errors use the error code and error string returned by the
-transactional API that failed.
-
-This error handling logic roughly translates to the following pseudo code:
-
-```
-main() {
-
-    try {
-       init_transactions()
-
-       while (run) {
-
-           begin_transaction()
-
-           start_checkpoint = consumer.position()
-
-           for input in consumer.poll():
-
-               output = process(input)
-
-               stored_offsets.update(input.partition, input.offset)
-
-               produce(output)
-
-               if time_spent_in_txn > 10s:
-                    break
-
-           send_offsets_to_transaction(stored_offsets)
-
-           commit_transaction()
-
-    } except FatalError as ex {
-        log("Fatal exception: ", ex)
-        raise(ex)
-
-    } except Exception as ex {
-        log("Current transaction failed: ", ex)
-        abort_transaction()
-        consumer.seek(start_checkpoint)
-        continue
-    }
-```
 
 
 #### Old producer fencing
@@ -804,73 +774,8 @@ automatically.
 librdkafka supports Exactly One Semantics (EOS) as defined in [KIP-98](https://cwiki.apache.org/confluence/display/KAFKA/KIP-98+-+Exactly+Once+Delivery+and+Transactional+Messaging).
 For more on the use of transactions, see [Transactions in Apache Kafka](https://www.confluent.io/blog/transactions-apache-kafka/).
 
-
-The transactional consume-process-produce loop roughly boils down to the
-following pseudo-code:
-
-```c
-    /* Producer */
-    rd_kafka_conf_t *pconf = rd_kafka_conf_new();
-    rd_kafka_conf_set(pconf, "bootstrap.servers", "mybroker");
-    rd_kafka_conf_set(pconf, "transactional.id", "my-transactional-id");
-    rd_kafka_t *producer = rd_kafka_new(RD_KAFKA_PRODUCER, pconf);
-
-    rd_kafka_init_transactions(producer);
-
-
-    /* Consumer */
-    rd_kafka_conf_t *cconf = rd_kafka_conf_new();
-    rd_kafka_conf_set(cconf, "bootstrap.servers", "mybroker");
-    rd_kafka_conf_set(cconf, "group.id", "my-group-id");
-    rd_kafka_conf_set(cconf, "enable.auto.commit", "false");
-    rd_kafka_t *consumer = rd_kafka_new(RD_KAFKA_CONSUMER, cconf);
-    rd_kafka_poll_set_consumer(consumer);
-
-    rd_kafka_subscribe(consumer, "inputTopic");
-
-    /* Consume-Process-Produce loop */
-    while (run) {
-
-       /* Begin transaction */
-       rd_kafka_begin_transaction(producer);
-
-       while (some_limiting_factor) {
-           rd_kafka_message_t *in, *out;
-
-           /* Consume messages */
-           in = rd_kafka_consumer_poll(consumer, -1);
-
-           /* Process message, generating an output message */
-           out = process_msg(in);
-
-           /* Produce output message to output topic */
-           rd_kafka_produce(producer, "outputTopic", out);
-
-           /* FIXME: or perhaps */
-           rd_kafka_topic_partition_list_set_from_msg(processed, msg);
-           /* or */
-           rd_kafka_transaction_store_offset_from_msg(producer, msg);
-       }
-
-       /* Commit the consumer offset as part of the transaction */
-       rd_kafka_send_offsets_to_transaction(producer,
-                                            "my-group-id",
-                                            rd_kafka_position(consumer));
-                                            /* or processed */
-
-       /* Commit the transaction */
-       rd_kafka_commit_transaction(producer);
-   }
-
-   rd_kafka_consumer_close(consumer);
-   rd_kafka_destroy(consumer);
-   rd_kafka_destroy(producer);
-```
-
-**Note**: The above code is a logical representation of transactional
-          program flow and does not represent the exact API parameter usage.
-          A proper application will perform error handling, etc.
-          See [`examples/transactions.cpp`](examples/transactions.cpp) for a proper example.
+See [examples/transactions.c](examples/transactions.c) for an example
+transactional EOS application.
 
 
 ## Usage
@@ -1124,6 +1029,37 @@ If host resolves to multiple addresses librdkafka will round-robin the
 addresses for each connection attempt.
 A DNS record containing all broker address can thus be used to provide a
 reliable bootstrap broker.
+
+
+#### SSL
+
+If the client is to connect to a broker's SSL endpoints/listeners the client
+needs to be configured with `security.protocol=SSL` for just SSL transport or
+`security.protocol=SASL_SSL` for SASL authentication and SSL transport.
+The client will try to verify the broker's certificate by checking the
+CA root certificates, if the broker's certificate can't be verified
+the connection is closed (and retried). This is to protect the client
+from connecting to rogue brokers.
+
+The CA root certificate defaults are system specific:
+ * On Linux, Mac OSX, and other Unix-like system the OpenSSL default
+   CA path will be used, also called the OPENSSLDIR,  which is typically
+   `/usr/lib/ssl` (on Linux, typcially in the `ca-certificates` package) and
+   `/usr/local/etc/openssl` on Mac OSX (Homebrew).
+ * On Windows the Root certificate store is used.
+
+If the system-provided default CA root certificates are not sufficient to
+verify the broker's certificate, such as when a self-signed certificate
+or a local CA authority is used, the CA certificate must be specified
+explicitly so that the client can find it.
+This can be done either by providing a PEM file (e.g., `cacert.pem`)
+as the `ssl.ca.location` configuration property, or by passing an in-memory
+PEM, X.509/DER or PKCS#12 certificate to `rd_kafka_conf_set_ssl_cert()`.
+
+It is also possible to disable broker certificate verification completely
+by setting `enable.ssl.certificate.verification=false`, but this is not
+recommended since it allows for rogue brokers and man-in-the-middle attacks,
+and should only be used for testing and troubleshooting purposes.
 
 
 #### Sparse connections
@@ -1636,7 +1572,7 @@ features rely on newer broker functionality.
 
 **Current defaults:**
  * `api.version.request=true`
- * `broker.version.fallback=0.9.0.0`
+ * `broker.version.fallback=0.10.0`
  * `api.version.fallback.ms=0` (never revert to `broker.version.fallback`)
 
 Depending on what broker version you are using, please configure your
@@ -1736,7 +1672,7 @@ The [Apache Kafka Implementation Proposals (KIPs)](https://cwiki.apache.org/conf
 | KIP-62 - max.poll.interval and background heartbeats                     | 0.10.1.0                                  | Supported                                                                                     |
 | KIP-70 - Proper client rebalance event on unsubscribe/subscribe          | 0.10.1.0                                  | Supported                                                                                     |
 | KIP-74 - max.partition.fetch.bytes                                       | 0.10.1.0                                  | Supported                                                                                     |
-| KIP-78 - Retrieve Cluster Id                                             | 0.10.1.0                                  | Supported (not supported by Go, .NET)                                                         |
+| KIP-78 - Retrieve Cluster Id                                             | 0.10.1.0                                  | Supported (not supported by .NET)                                                         |
 | KIP-79 - OffsetsForTimes                                                 | 0.10.1.0                                  | Supported                                                                                     |
 | KIP-81 - Consumer pre-fetch buffer size                                  | 2.4.0 (WIP)                               | Supported                                                                                     |
 | KIP-82 - Record Headers                                                  | 0.11.0.0                                  | Supported                                                                                     |
@@ -1779,20 +1715,20 @@ The [Apache Kafka Implementation Proposals (KIPs)](https://cwiki.apache.org/conf
 | KIP-339 - AdminAPI: incrementalAlterConfigs                              | 2.3.0                                     | Not supported                                                                                 |
 | KIP-341 - Update Sticky partition assignment data                        | 2.3.0                                     | Not supported                                                                                 |
 | KIP-342 - Custom SASL OAUTHBEARER extensions                             | 2.1.0                                     | Supported                                                                                     |
-| KIP-345 - Consumer: Static membership                                    | 2.4.0 (WIP), partially available in 2.3.0 | Supported                                                                                     |
+| KIP-345 - Consumer: Static membership                                    | 2.4.0                                     | Supported                                                                                     |
 | KIP-357 - AdminAPI: list ACLs per principal                              | 2.1.0                                     | Not supported                                                                                 |
-| KIP-359 - Producer: use EpochLeaderId                                    | 2.4.0 (WIP)                               | Not supported                                                                                 |
-| KIP-360 - Improve handling of unknown Idempotent Producer                | 2.4.0 (WIP)                               | Not supported                                                                                 |
+| KIP-359 - Producer: use EpochLeaderId                                    | 2.4.0                                     | Not supported                                                                                 |
+| KIP-360 - Improve handling of unknown Idempotent Producer                | 2.4.0                                     | Not supported                                                                                 |
 | KIP-361 - Consumer: add config to disable auto topic creation            | 2.3.0                                     | Not supported                                                                                 |
 | KIP-368 - SASL period reauth                                             | 2.2.0                                     | Not supported                                                                                 |
 | KIP-369 - Always roundRobin partitioner                                  | 2.4.0                                     | Not supported                                                                                 |
 | KIP-389 - Consumer group max size                                        | 2.2.0                                     | Supported (error is propagated to application, but the consumer does not raise a fatal error) |
 | KIP-392 - Allow consumers to fetch from closest replica                  | 2.4.0                                     | Supported                                                                                     |
-| KIP-394 - Consumer: require member.id in JoinGroupRequest                | 2.2.0                                     | In progress as part of KIP-345                                                                |
+| KIP-394 - Consumer: require member.id in JoinGroupRequest                | 2.2.0                                     | Supported                                                                                     |
 | KIP-396 - AdminAPI: commit/list offsets                                  | 2.4.0 (WIP)                               | Not supported                                                                                 |
 | KIP-412 - AdminAPI: adjust log levels                                    | 2.4.0 (WIP)                               | Not supported                                                                                 |
 | KIP-421 - Variables in client config files                               | 2.3.0                                     | Not applicable (librdkafka, et.al, does not provide a config file interface, and shouldn't)   |
-| KIP-429 - Consumer: incremental rebalance protocol                       | 2.4.0 (WIP)                               | Not supported                                                                                 |
+| KIP-429 - Consumer: incremental rebalance protocol                       | 2.4.0                                     | Not supported                                                                                 |
 | KIP-430 - AdminAPI: return authorized operations in Describe.. responses | 2.3.0                                     | Not supported                                                                                 |
 | KIP-436 - Start time in stats                                            | 2.3.0                                     | Supported                                                                                     |
 | KIP-455 - AdminAPI: Replica assignment                                   | 2.4.0 (WIP)                               | Not supported                                                                                 |
@@ -1800,13 +1736,16 @@ The [Apache Kafka Implementation Proposals (KIPs)](https://cwiki.apache.org/conf
 | KIP-464 - AdminAPI: defaults for createTopics                            | 2.4.0                                     | Not supported                                                                                 |
 | KIP-467 - Per-message (sort of) error codes in ProduceResponse           | 2.4.0 (WIP)                               | Not supported                                                                                 |
 | KIP-480 - Sticky partitioner                                             | 2.4.0                                     | Not supported                                                                                 |
-| KIP-496 - AdminAPI: delete offsets                                       | 2.4.0 (WIP)                               | Not supported                                                                                 |
-| KIP-482 - Optional fields in Kafka protocol                              | 2.4.0 (WIP)                               | Not supported                                                                                 |
+| KIP-482 - Optional fields in Kafka protocol                              | 2.4.0                                     | Partially supported (ApiVersionRequest)                                                       |
+| KIP-496 - AdminAPI: delete offsets                                       | 2.4.0                                     | Not supported                                                                                 |
+| KIP-511 - Collect Client's Name and Version                              | 2.4.0                                     | Supported                                                                                     |
+| KIP-514 - Bounded flush()                                                | 2.4.0                                     | Supported                                                                                     |
+| KIP-517 - Consumer poll() metrics                                        | 2.4.0                                     | Not supported                                                                                 |
 
 
 ### Supported protocol versions
 
-"Kafka max" is the maximum ApiVersion supported in Apache Kafka 2.3.0, while
+"Kafka max" is the maximum ApiVersion supported in Apache Kafka 2.4.0, while
 "librdkafka max" is the maximum ApiVersion supported in the latest
 release of librdkafka.
 
@@ -1831,7 +1770,7 @@ release of librdkafka.
 | 15      | DescribeGroups          | 4           | 0                       |
 | 16      | ListGroups              | 2           | 0                       |
 | 17      | SaslHandshake           | 1           | 1                       |
-| 18      | ApiVersions             | 2           | 0                       |
+| 18      | ApiVersions             | 3           | 3                       |
 | 19      | CreateTopics            | 4           | 2                       |
 | 20      | DeleteTopics            | 3           | 1                       |
 | 21      | DeleteRecords           | 1           | -                       |
@@ -1858,3 +1797,72 @@ release of librdkafka.
 | 42      | DeleteGroups            | 1           | -                       |
 | 43      | ElectPreferredLeaders   | 0           | -                       |
 | 44      | IncrementalAlterConfigs | 0           | -                       |
+
+
+
+# Recommendations for language binding developers
+
+These recommendations are targeted for developers that wrap librdkafka
+with their high-level languages, such as confluent-kafka-go or node-rdkafka.
+
+## Expose the configuration interface pass-thru
+
+librdkafka's string-based key=value configuration property interface controls
+most runtime behaviour and evolves over time.
+Most features are also only configuration-based, meaning they do not require a
+new API (SSL and SASL are two good examples which are purely enabled through
+configuration properties) and thus no changes needed to the binding/application
+code.
+
+If your language binding/applications allows configuration properties to be set
+in a pass-through fashion without any pre-checking done by your binding code it
+means that a simple upgrade of the underlying librdkafka library (but not your
+bindings) will provide new features to the user.
+
+## Error constants
+
+The error constants, both the official (value >= 0) errors as well as the
+internal (value < 0) errors, evolve constantly.
+To avoid hard-coding them to expose to your users, librdkafka provides an API
+to extract the full list programmatically during runtime or for
+code generation, see `rd_kafka_get_err_descs()`.
+
+## Reporting client software name and version to broker
+
+[KIP-511](https://cwiki.apache.org/confluence/display/KAFKA/KIP-511%3A+Collect+and+Expose+Client%27s+Name+and+Version+in+the+Brokers) introduces a means for a
+Kafka client to report its implementation name and version to the broker, the
+broker then exposes this as metrics (e.g., through JMX) to help Kafka operators
+troubleshoot problematic clients, understand the impact of broker and client
+upgrades, etc.
+This requires broker version 2.4.0 or later (metrics added in 2.5.0).
+
+librdkafka will send its name (`librdkafka`) and version (e.g., `v1.3.0`)
+upon connect to a supporting broker.
+To help distinguish high-level client bindings on top of librdkafka, a client
+binding should configure the following two properties:
+ * `client.software.name` - set to the binding name, e.g,
+   `confluent-kafka-go` or `node-rdkafka`.
+ * `client.software.version` - the version of the binding and the version
+   of librdkafka, e.g., `v1.3.0-librdkafka-v1.3.0` or
+   `1.2.0-librdkafka-v1.3.0`.
+   It is **highly recommended** to include the librdkafka version in this
+   version string.
+
+These configuration properties are hidden (from CONFIGURATION.md et.al.) as
+they should typically not be modified by the user.
+
+## Documentation reuse
+
+You are free to reuse the librdkafka API and CONFIGURATION documentation in
+your project, but please do return any documentation improvements back to
+librdkafka (file a github pull request).
+
+## Community support
+
+You are welcome to direct your users to
+[librdkafka's Gitter chat room](http://gitter.im/edenhill/librdkafka) as long as
+you monitor the conversions in there to pick up questions specific to your
+bindings.
+But for the most part user questions are usually generic enough to apply to all
+librdkafka bindings.
+

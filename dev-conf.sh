@@ -81,6 +81,8 @@ case "$1" in
 esac
 
 
+export CFLAGS="-Wshadow=compatible-local -Wshadow=local"
+
 # enable pedantic
 #export CFLAGS='-std=c99 -pedantic -Wshadow'
 #export CXXFLAGS='-std=c++98 -pedantic'
@@ -104,9 +106,6 @@ OPTS="$OPTS --disable-optimization"
 
 # disable cyrus-sasl
 #OPTS="$OPTS --disable-sasl"
-
-# enable sharedptr debugging
-#OPTS="$OPTS --enable-sharedptr-debug"
 
 #enable refcnt debugging
 #OPTS="$OPTS --enable-refcnt-debug"

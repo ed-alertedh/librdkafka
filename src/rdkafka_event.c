@@ -109,7 +109,7 @@ rd_kafka_event_message_next (rd_kafka_event_t *rkev) {
 			return NULL;
 
 		/* Store offset */
-		rd_kafka_op_offset_store(NULL, rko, rkmessage);
+		rd_kafka_op_offset_store(NULL, rko);
 
 		return rkmessage;
 
@@ -131,11 +131,12 @@ rd_kafka_event_message_next (rd_kafka_event_t *rkev) {
 
 
 size_t rd_kafka_event_message_array (rd_kafka_event_t *rkev,
-				     const rd_kafka_message_t **rkmessages, size_t size) {
+				     const rd_kafka_message_t **rkmessages,
+                                     size_t size) {
 	size_t cnt = 0;
 	const rd_kafka_message_t *rkmessage;
 
-	while ((rkmessage = rd_kafka_event_message_next(rkev)))
+	while (cnt < size && (rkmessage = rd_kafka_event_message_next(rkev)))
 		rkmessages[cnt++] = rkmessage;
 
 	return cnt;
@@ -248,8 +249,7 @@ rd_kafka_event_topic_partition (rd_kafka_event_t *rkev) {
 	if (unlikely(!rkev->rko_rktp))
 		return NULL;
 
-	rktpar = rd_kafka_topic_partition_new_from_rktp(
-		rd_kafka_toppar_s2i(rkev->rko_rktp));
+	rktpar = rd_kafka_topic_partition_new_from_rktp(rkev->rko_rktp);
 
 	switch (rkev->rko_type)
 	{

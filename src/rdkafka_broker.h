@@ -504,7 +504,7 @@ void rd_kafka_broker_connect_done (rd_kafka_broker_t *rkb, const char *errstr);
 int rd_kafka_send (rd_kafka_broker_t *rkb);
 int rd_kafka_recv (rd_kafka_broker_t *rkb);
 
-void rd_kafka_dr_msgq (rd_kafka_itopic_t *rkt,
+void rd_kafka_dr_msgq (rd_kafka_topic_t *rkt,
 		       rd_kafka_msgq_t *rkmq, rd_kafka_resp_err_t err);
 
 void rd_kafka_dr_implicit_ack (rd_kafka_broker_t *rkb,
@@ -569,10 +569,12 @@ void rd_kafka_broker_active_toppar_next (rd_kafka_broker_t *rkb,
 
 
 void rd_kafka_broker_active_toppar_add (rd_kafka_broker_t *rkb,
-                                        rd_kafka_toppar_t *rktp);
+                                        rd_kafka_toppar_t *rktp,
+                                        const char *reason);
 
 void rd_kafka_broker_active_toppar_del (rd_kafka_broker_t *rkb,
-                                        rd_kafka_toppar_t *rktp);
+                                        rd_kafka_toppar_t *rktp,
+                                        const char *reason);
 
 
 void rd_kafka_broker_schedule_connection (rd_kafka_broker_t *rkb);

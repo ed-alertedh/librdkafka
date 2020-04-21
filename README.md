@@ -1,7 +1,7 @@
 librdkafka - the Apache Kafka C/C++ client library
 ==================================================
 
-Copyright (c) 2012-2019, [Magnus Edenhill](http://www.edenhill.se/).
+Copyright (c) 2012-2020, [Magnus Edenhill](http://www.edenhill.se/).
 
 [https://github.com/edenhill/librdkafka](https://github.com/edenhill/librdkafka)
 
@@ -14,7 +14,8 @@ the producer and 3 million msgs/second for the consumer.
 **librdkafka** is licensed under the 2-clause BSD license.
 
 # Features #
-  * High-level producer
+  * Full Exactly-Once-Semantics (EOS) support
+  * High-level producer, including Idempotent and Transactional producers
   * High-level balanced KafkaConsumer (requires broker >= 0.9)
   * Simple (legacy) consumer
   * Admin client
@@ -105,10 +106,10 @@ If the version is out of date, please [create an issue or pull request](https://
 **NOTE**: Static linking of ZStd (requires zstd >= 1.2.1) in the producer
           enables encoding the original size in the compression frame header,
           which will speed up the consumer.
-          Use `STATIC_LIB_zstd=/path/to/libzstd.a ./configure --enable-static`
+          Use `STATIC_LIB_libzstd=/path/to/libzstd.a ./configure --enable-static`
           to enable static ZStd linking.
           MacOSX example:
-          `STATIC_LIB_zstd=$(brew ls -v zstd | grep libzstd.a$) ./configure --enable-static`
+          `STATIC_LIB_libzstd=$(brew ls -v zstd | grep libzstd.a$) ./configure --enable-static`
 
 
 ### Building

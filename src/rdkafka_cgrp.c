@@ -37,6 +37,10 @@
 #include "rdkafka_cgrp.h"
 #include "rdkafka_interceptor.h"
 
+#include "rdunittest.h"
+
+#include <ctype.h>
+
 
 static void rd_kafka_cgrp_check_unassign_done (rd_kafka_cgrp_t *rkcg,
                                                const char *reason);
@@ -1684,7 +1688,9 @@ static RD_INLINE int rd_kafka_cgrp_try_terminate (rd_kafka_cgrp_t *rkcg) {
 
 
 /**
- * Add partition to this cgrp management
+ * @brief Add partition to this cgrp management
+ *
+ * @locks rktp_lock MUST be held.
  */
 static void rd_kafka_cgrp_partition_add (rd_kafka_cgrp_t *rkcg,
                                          rd_kafka_toppar_t *rktp) {
@@ -1694,13 +1700,16 @@ static void rd_kafka_cgrp_partition_add (rd_kafka_cgrp_t *rkcg,
                      rktp->rktp_rkt->rkt_topic->str,
                      rktp->rktp_partition);
 
-        rd_kafka_assert(rkcg->rkcg_rk, !rktp->rktp_s_for_cgrp);
-        rktp->rktp_s_for_cgrp = rd_kafka_toppar_keep(rktp);
-        rd_list_add(&rkcg->rkcg_toppars, rktp->rktp_s_for_cgrp);
+        rd_assert(!(rktp->rktp_flags & RD_KAFKA_TOPPAR_F_ON_CGRP));
+        rktp->rktp_flags |= RD_KAFKA_TOPPAR_F_ON_CGRP;
+        rd_kafka_toppar_keep(rktp);
+        rd_list_add(&rkcg->rkcg_toppars, rktp);
 }
 
 /**
- * Remove partition from this cgrp management
+ * @brief Remove partition from this cgrp management
+ *
+ * @locks rktp_lock MUST be held.
  */
 static void rd_kafka_cgrp_partition_del (rd_kafka_cgrp_t *rkcg,
                                          rd_kafka_toppar_t *rktp) {
@@ -1709,11 +1718,11 @@ static void rd_kafka_cgrp_partition_del (rd_kafka_cgrp_t *rkcg,
                      rkcg->rkcg_group_id->str,
                      rktp->rktp_rkt->rkt_topic->str,
                      rktp->rktp_partition);
-        rd_kafka_assert(rkcg->rkcg_rk, rktp->rktp_s_for_cgrp);
 
-        rd_list_remove(&rkcg->rkcg_toppars, rktp->rktp_s_for_cgrp);
-        rd_kafka_toppar_destroy(rktp->rktp_s_for_cgrp);
-        rktp->rktp_s_for_cgrp = NULL;
+        rd_assert(rktp->rktp_flags & RD_KAFKA_TOPPAR_F_ON_CGRP);
+        rktp->rktp_flags &= ~RD_KAFKA_TOPPAR_F_ON_CGRP;
+        rd_list_remove(&rkcg->rkcg_toppars, rktp);
+        rd_kafka_toppar_destroy(rktp); /* refcnt from _add above */
 
         rd_kafka_cgrp_try_terminate(rkcg);
 }
@@ -1880,24 +1889,26 @@ rd_kafka_cgrp_partitions_fetch_start0 (rd_kafka_cgrp_t *rkcg,
 		rd_kafka_cgrp_set_join_state(rkcg,
 					     RD_KAFKA_CGRP_JOIN_STATE_STARTED);
 
-                /* Start a timer to enforce `max.poll.interval.ms`.
-                 * Instead of restarting the timer on each ...poll() call,
-                 * which would be costly (once per message), set up an
-                 * intervalled timer that checks a timestamp
-                 * (that is updated on ..poll()).
-                 * The timer interval is 2 hz. */
-
-                rd_kafka_timer_start(&rkcg->rkcg_rk->rk_timers,
-                             &rkcg->rkcg_max_poll_interval_tmr,
-                             500 * 1000ll /* 500ms */,
-                             rd_kafka_cgrp_max_poll_interval_check_tmr_cb,
-                             rkcg);
+                if (rkcg->rkcg_subscription) {
+                        /* If using subscribe(), start a timer to enforce
+                         * `max.poll.interval.ms`.
+                         * Instead of restarting the timer on each ...poll()
+                         * call, which would be costly (once per message),
+                         * set up an intervalled timer that checks a timestamp
+                         * (that is updated on ..poll()).
+                         * The timer interval is 2 hz. */
+                        rd_kafka_timer_start(
+                                &rkcg->rkcg_rk->rk_timers,
+                                &rkcg->rkcg_max_poll_interval_tmr,
+                                500 * 1000ll /* 500ms */,
+                                rd_kafka_cgrp_max_poll_interval_check_tmr_cb,
+                                rkcg);
+                }
 
                 for (i = 0 ; i < assignment->cnt ; i++) {
                         rd_kafka_topic_partition_t *rktpar =
                                 &assignment->elems[i];
-                        shptr_rd_kafka_toppar_t *s_rktp = rktpar->_private;
-                        rd_kafka_toppar_t *rktp = rd_kafka_toppar_s2i(s_rktp);
+                        rd_kafka_toppar_t *rktp = rktpar->_private;
 
 			if (!rktp->rktp_assigned) {
 				rktp->rktp_assigned = 1;
@@ -1985,9 +1996,8 @@ rd_kafka_cgrp_handle_OffsetCommit (rd_kafka_cgrp_t *rkcg,
         int errcnt = 0;
 
         /* Update toppars' committed offset or global error */
-        for (i = 0 ; i < offsets->cnt ; i++) {
+        for (i = 0 ; offsets && i < offsets->cnt ; i++) {
                 rd_kafka_topic_partition_t *rktpar =&offsets->elems[i];
-                shptr_rd_kafka_toppar_t *s_rktp;
                 rd_kafka_toppar_t *rktp;
 
                 /* Ignore logical offsets since they were never
@@ -2013,17 +2023,16 @@ rd_kafka_cgrp_handle_OffsetCommit (rd_kafka_cgrp_t *rkcg,
                         continue;
                 }
 
-                s_rktp = rd_kafka_topic_partition_list_get_toppar(
-                        rkcg->rkcg_rk, rktpar);
-                if (!s_rktp)
+                rktp = rd_kafka_topic_partition_list_get_toppar(rkcg->rkcg_rk,
+                                                                rktpar);
+                if (!rktp)
                         continue;
 
-                rktp = rd_kafka_toppar_s2i(s_rktp);
                 rd_kafka_toppar_lock(rktp);
                 rktp->rktp_committed_offset = rktpar->offset;
                 rd_kafka_toppar_unlock(rktp);
 
-                rd_kafka_toppar_destroy(s_rktp);
+                rd_kafka_toppar_destroy(rktp);
         }
 
         if (rkcg->rkcg_join_state == RD_KAFKA_CGRP_JOIN_STATE_WAIT_UNASSIGN)
@@ -2484,12 +2493,10 @@ rd_kafka_cgrp_unassign (rd_kafka_cgrp_t *rkcg) {
 
         for (i = 0 ; i < old_assignment->cnt ; i++) {
                 rd_kafka_topic_partition_t *rktpar;
-                shptr_rd_kafka_toppar_t *s_rktp;
                 rd_kafka_toppar_t *rktp;
 
                 rktpar = &old_assignment->elems[i];
-                s_rktp = rktpar->_private;
-                rktp = rd_kafka_toppar_s2i(s_rktp);
+                rktp = rktpar->_private;
 
                 if (rktp->rktp_assigned) {
                         rd_kafka_toppar_op_fetch_stop(
@@ -2540,7 +2547,7 @@ rd_kafka_cgrp_assign (rd_kafka_cgrp_t *rkcg,
          * This is to make sure the rktp stays alive during unassign(). */
         for (i = 0 ; assignment && i < assignment->cnt ; i++) {
                 rd_kafka_topic_partition_t *rktpar;
-                shptr_rd_kafka_toppar_t *s_rktp;
+                rd_kafka_toppar_t *rktp;
 
                 rktpar = &assignment->elems[i];
 
@@ -2548,12 +2555,12 @@ rd_kafka_cgrp_assign (rd_kafka_cgrp_t *rkcg,
                 if (rktpar->_private)
                         continue;
 
-                s_rktp = rd_kafka_toppar_get2(rkcg->rkcg_rk,
-                                              rktpar->topic,
-                                              rktpar->partition,
-                                              0/*no-ua*/, 1/*create-on-miss*/);
-                if (s_rktp)
-                        rktpar->_private = s_rktp;
+                rktp = rd_kafka_toppar_get2(rkcg->rkcg_rk,
+                                            rktpar->topic,
+                                            rktpar->partition,
+                                            0/*no-ua*/, 1/*create-on-miss*/);
+                if (rktp)
+                        rktpar->_private = rktp;
         }
 
         rd_kafka_cgrp_version_new_barrier(rkcg);
@@ -2588,9 +2595,7 @@ rd_kafka_cgrp_assign (rd_kafka_cgrp_t *rkcg,
                 for (i = 0 ; i < rkcg->rkcg_assignment->cnt ; i++) {
                         rd_kafka_topic_partition_t *rktpar =
                                 &rkcg->rkcg_assignment->elems[i];
-                        shptr_rd_kafka_toppar_t *s_rktp = rktpar->_private;
-                        rd_kafka_toppar_t *rktp =
-                                rd_kafka_toppar_s2i(s_rktp);
+                        rd_kafka_toppar_t *rktp = rktpar->_private;
                         rd_kafka_toppar_lock(rktp);
                         rd_kafka_toppar_desired_add0(rktp);
                         rd_kafka_toppar_unlock(rktp);
@@ -3021,7 +3026,7 @@ rd_kafka_cgrp_op_serve (rd_kafka_t *rk, rd_kafka_q_t *rkq,
                 return RD_KAFKA_OP_RES_HANDLED;
         }
 
-        rktp = rko->rko_rktp ? rd_kafka_toppar_s2i(rko->rko_rktp) : NULL;
+        rktp = rko->rko_rktp;
 
         if (rktp && !silent_op)
                 rd_kafka_dbg(rkcg->rkcg_rk, CGRP, "CGRPOP",
@@ -3611,4 +3616,184 @@ void rd_kafka_cgrp_handle_SyncGroup (rd_kafka_cgrp_t *rkcg,
                                          rd_kafka_err2str(err));
 
         rd_kafka_cgrp_set_join_state(rkcg, RD_KAFKA_CGRP_JOIN_STATE_INIT);
+}
+
+
+
+
+rd_kafka_consumer_group_metadata_t *
+rd_kafka_consumer_group_metadata_new (const char *group_id) {
+        rd_kafka_consumer_group_metadata_t *cgmetadata;
+
+        if (!group_id)
+                return NULL;
+
+        cgmetadata = rd_calloc(1, sizeof(*cgmetadata));
+        cgmetadata->group_id = rd_strdup(group_id);
+
+        return cgmetadata;
+}
+
+rd_kafka_consumer_group_metadata_t *
+rd_kafka_consumer_group_metadata (rd_kafka_t *rk) {
+        if (rk->rk_type != RD_KAFKA_CONSUMER ||
+            !rk->rk_conf.group_id_str)
+                return NULL;
+
+        return rd_kafka_consumer_group_metadata_new(rk->rk_conf.group_id_str);
+}
+
+void
+rd_kafka_consumer_group_metadata_destroy (
+        rd_kafka_consumer_group_metadata_t *cgmetadata) {
+        rd_free(cgmetadata->group_id);
+        rd_free(cgmetadata);
+}
+
+rd_kafka_consumer_group_metadata_t *
+rd_kafka_consumer_group_metadata_dup (
+        const rd_kafka_consumer_group_metadata_t *cgmetadata) {
+        rd_kafka_consumer_group_metadata_t *ret;
+
+        ret = rd_calloc(1, sizeof(*cgmetadata));
+        ret->group_id = rd_strdup(cgmetadata->group_id);
+
+        return ret;
+}
+
+
+/*
+ * Consumer group metadata serialization format v1:
+ *  "CGMDv1:"<group_id>"\0"
+ * Where <group_id> is the group_id string.
+ */
+static const char rd_kafka_consumer_group_metadata_magic[7] = "CGMDv1:";
+
+rd_kafka_error_t *rd_kafka_consumer_group_metadata_write (
+        const rd_kafka_consumer_group_metadata_t *cgmd,
+        void **bufferp, size_t *sizep) {
+        char *buf;
+        size_t size;
+        size_t of = 0;
+        size_t magic_len = sizeof(rd_kafka_consumer_group_metadata_magic);
+        size_t groupid_len = strlen(cgmd->group_id) + 1;
+
+        size = magic_len + groupid_len;
+        buf = rd_malloc(size);
+
+        memcpy(buf, rd_kafka_consumer_group_metadata_magic, magic_len);
+        of += magic_len;
+
+        memcpy(buf+of, cgmd->group_id, groupid_len);
+
+        *bufferp = buf;
+        *sizep = size;
+
+        return NULL;
+}
+
+
+rd_kafka_error_t *rd_kafka_consumer_group_metadata_read (
+        rd_kafka_consumer_group_metadata_t **cgmdp,
+        const void *buffer, size_t size) {
+        size_t magic_len = sizeof(rd_kafka_consumer_group_metadata_magic);
+        const char *buf = (const char *)buffer;
+        const char *end = buf + size;
+        const char *group_id;
+        const char *s;
+
+        if (size < magic_len + 1)
+                return rd_kafka_error_new(RD_KAFKA_RESP_ERR__BAD_MSG,
+                                          "Input buffer is too short");
+
+        if (memcmp(buffer, rd_kafka_consumer_group_metadata_magic, magic_len))
+                return rd_kafka_error_new(
+                        RD_KAFKA_RESP_ERR__BAD_MSG,
+                        "Input buffer is not a serialized "
+                        "consumer group metadata object");
+
+        group_id = buf + magic_len;
+
+        /* Check that group_id is safe */
+        for (s = group_id ; s < end - 1 ; s++) {
+                if (!isprint((int)*s))
+                        return rd_kafka_error_new(
+                                RD_KAFKA_RESP_ERR__BAD_MSG,
+                                "Input buffer group id is not safe");
+        }
+
+        if (*s != '\0')
+                return rd_kafka_error_new(
+                        RD_KAFKA_RESP_ERR__BAD_MSG,
+                        "Input buffer has invalid stop byte");
+
+        /* We now know that group_id is printable-safe and is nul-terminated. */
+        *cgmdp = rd_kafka_consumer_group_metadata_new(group_id);
+
+        return NULL;
+}
+
+
+static int unittest_consumer_group_metadata (void) {
+        rd_kafka_consumer_group_metadata_t *cgmd;
+        const char *group_ids[] = {
+                "mY. group id:.",
+                "0",
+                "2222222222222222222222221111111111111111111111111111112222",
+                "",
+                NULL,
+        };
+        int i;
+
+        for (i = 0 ; group_ids[i] ; i++) {
+                const char *group_id = group_ids[i];
+                void *buffer, *buffer2;
+                size_t size, size2;
+                rd_kafka_error_t *error;
+
+                cgmd = rd_kafka_consumer_group_metadata_new(group_id);
+                RD_UT_ASSERT(cgmd != NULL, "failed to create metadata");
+
+                error = rd_kafka_consumer_group_metadata_write(cgmd, &buffer,
+                                                               &size);
+                RD_UT_ASSERT(!error, "metadata_write failed: %s",
+                             rd_kafka_error_string(error));
+
+                rd_kafka_consumer_group_metadata_destroy(cgmd);
+
+                cgmd = NULL;
+                error = rd_kafka_consumer_group_metadata_read(&cgmd, buffer,
+                                                              size);
+                RD_UT_ASSERT(!error, "metadata_read failed: %s",
+                             rd_kafka_error_string(error));
+
+                /* Serialize again and compare buffers */
+                error = rd_kafka_consumer_group_metadata_write(cgmd, &buffer2,
+                                                               &size2);
+                RD_UT_ASSERT(!error, "metadata_write failed: %s",
+                             rd_kafka_error_string(error));
+
+                RD_UT_ASSERT(size == size2 && !memcmp(buffer, buffer2, size),
+                             "metadata_read/write size or content mismatch: "
+                             "size %"PRIusz", size2 %"PRIusz,
+                             size, size2);
+
+                rd_kafka_consumer_group_metadata_destroy(cgmd);
+                rd_free(buffer);
+                rd_free(buffer2);
+        }
+
+        RD_UT_PASS();
+}
+
+
+/**
+ * @brief Consumer group unit tests
+ */
+int unittest_cgrp (void) {
+        int fails = 0;
+
+        fails += unittest_consumer_group_metadata();
+
+        return fails;
 }

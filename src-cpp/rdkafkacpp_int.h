@@ -101,6 +101,53 @@ void update_partitions_from_c_parts (std::vector<TopicPartition*> &partitions,
                                      const rd_kafka_topic_partition_list_t *c_parts);
 
 
+class ErrorImpl : public Error {
+ public:
+  ~ErrorImpl () {
+    rd_kafka_error_destroy(c_error_);
+  };
+
+  ErrorImpl (ErrorCode code, const std::string *errstr) {
+    c_error_ = rd_kafka_error_new(static_cast<rd_kafka_resp_err_t>(code),
+                                  errstr ? "%s" : NULL,
+                                  errstr ? errstr->c_str() : NULL);
+  }
+
+  ErrorImpl (rd_kafka_error_t *c_error):
+      c_error_(c_error) {};
+
+  static Error *create (ErrorCode code, const std::string *errstr) {
+    return new ErrorImpl(code, errstr);
+  }
+
+  ErrorCode   code () const {
+    return static_cast<ErrorCode>(rd_kafka_error_code(c_error_));
+  }
+
+  std::string name () const {
+    return std::string(rd_kafka_error_name(c_error_));
+  }
+
+  std::string str () const {
+    return std::string(rd_kafka_error_string(c_error_));
+  }
+
+  bool is_fatal () const {
+    return !!rd_kafka_error_is_fatal(c_error_);
+  }
+
+  bool is_retriable () const {
+    return !!rd_kafka_error_is_retriable(c_error_);
+  }
+
+  bool txn_requires_abort () const {
+    return !!rd_kafka_error_txn_requires_abort(c_error_);
+  }
+
+  rd_kafka_error_t *c_error_;
+};
+
+
 class EventImpl : public Event {
  public:
   ~EventImpl () {};
@@ -1031,6 +1078,22 @@ public:
 };
 
 
+/**
+ * @class ConsumerGroupMetadata wraps the
+ *        C rd_kafka_consumer_group_metadata_t object.
+ */
+class ConsumerGroupMetadataImpl : public ConsumerGroupMetadata {
+ public:
+  ~ConsumerGroupMetadataImpl() {
+    rd_kafka_consumer_group_metadata_destroy(cgmetadata_);
+  }
+
+  ConsumerGroupMetadataImpl(rd_kafka_consumer_group_metadata_t *cgmetadata):
+      cgmetadata_(cgmetadata) {}
+
+  rd_kafka_consumer_group_metadata_t *cgmetadata_;
+};
+
 
 class KafkaConsumerImpl : virtual public KafkaConsumer, virtual public HandleImpl {
 public:
@@ -1106,6 +1169,16 @@ public:
 
   ErrorCode committed (std::vector<TopicPartition*> &partitions, int timeout_ms);
   ErrorCode position (std::vector<TopicPartition*> &partitions);
+
+  ConsumerGroupMetadata *groupMetadata () {
+    rd_kafka_consumer_group_metadata_t *cgmetadata;
+
+    cgmetadata = rd_kafka_consumer_group_metadata(rk_);
+    if (!cgmetadata)
+      return NULL;
+
+    return new ConsumerGroupMetadataImpl(cgmetadata);
+  }
 
   ErrorCode close ();
 
@@ -1241,75 +1314,69 @@ class ProducerImpl : virtual public Producer, virtual public HandleImpl {
                                                                 (int)purge_flags));
   }
 
-  ErrorCode init_transactions (int timeout_ms, std::string &errstr) {
-    rd_kafka_resp_err_t c_err;
-    char errbuf[512];
+  Error *init_transactions (int timeout_ms) {
+    rd_kafka_error_t *c_error;
 
-    c_err = rd_kafka_init_transactions(rk_, timeout_ms,
-                                       errbuf, sizeof(errbuf));
-    if (c_err)
-      errstr = errbuf;
+    c_error = rd_kafka_init_transactions(rk_, timeout_ms);
 
-    return static_cast<ErrorCode>(c_err);
+    if (c_error)
+      return new ErrorImpl(c_error);
+    else
+      return NULL;
   }
 
-  ErrorCode begin_transaction (std::string &errstr) {
-    rd_kafka_resp_err_t c_err;
-    char errbuf[512];
+  Error *begin_transaction () {
+    rd_kafka_error_t *c_error;
 
-    c_err = rd_kafka_begin_transaction(rk_, errbuf, sizeof(errbuf));
-    if (c_err)
-      errstr = errbuf;
+    c_error = rd_kafka_begin_transaction(rk_);
 
-    return static_cast<ErrorCode>(c_err);
+    if (c_error)
+      return new ErrorImpl(c_error);
+    else
+      return NULL;
   }
 
-  ErrorCode send_offsets_to_transaction (
+  Error *send_offsets_to_transaction (
       const std::vector<TopicPartition*> &offsets,
-      const std::string &group_id,
-      int timeout_ms,
-      std::string &errstr) {
-    rd_kafka_resp_err_t c_err;
-    char errbuf[512];
+      const ConsumerGroupMetadata *group_metadata,
+      int timeout_ms) {
+    rd_kafka_error_t *c_error;
+    const RdKafka::ConsumerGroupMetadataImpl *cgmdimpl =
+        dynamic_cast<const RdKafka::ConsumerGroupMetadataImpl *>(group_metadata);
     rd_kafka_topic_partition_list_t *c_offsets = partitions_to_c_parts(offsets);
 
-    c_err = rd_kafka_send_offsets_to_transaction(rk_, c_offsets,
-                                                 group_id.c_str(),
-                                                 timeout_ms,
-                                                 errbuf, sizeof(errbuf));
+    c_error = rd_kafka_send_offsets_to_transaction(rk_, c_offsets,
+                                                   cgmdimpl->cgmetadata_,
+                                                   timeout_ms);
 
     rd_kafka_topic_partition_list_destroy(c_offsets);
 
-    if (c_err)
-      errstr = errbuf;
-
-    return static_cast<ErrorCode>(c_err);
-
+    if (c_error)
+      return new ErrorImpl(c_error);
+    else
+      return NULL;
   }
 
-  ErrorCode commit_transaction (int timeout_ms, std::string &errstr) {
-    rd_kafka_resp_err_t c_err;
-    char errbuf[512];
+  Error *commit_transaction (int timeout_ms) {
+    rd_kafka_error_t *c_error;
 
-    c_err = rd_kafka_commit_transaction(rk_, timeout_ms,
-                                        errbuf, sizeof(errbuf));
-    if (c_err)
-      errstr = errbuf;
+    c_error = rd_kafka_commit_transaction(rk_, timeout_ms);
 
-    return static_cast<ErrorCode>(c_err);
-
+    if (c_error)
+      return new ErrorImpl(c_error);
+    else
+      return NULL;
   }
 
-  ErrorCode abort_transaction (int timeout_ms, std::string &errstr) {
-    rd_kafka_resp_err_t c_err;
-    char errbuf[512];
+  Error *abort_transaction (int timeout_ms) {
+    rd_kafka_error_t *c_error;
 
-    c_err = rd_kafka_abort_transaction(rk_, timeout_ms, errbuf, sizeof(errbuf));
-    if (c_err)
-      errstr = errbuf;
+    c_error = rd_kafka_abort_transaction(rk_, timeout_ms);
 
-    return static_cast<ErrorCode>(c_err);
-
+    if (c_error)
+      return new ErrorImpl(c_error);
+    else
+      return NULL;
   }
 
   static Producer *create (Conf *conf, std::string &errstr);

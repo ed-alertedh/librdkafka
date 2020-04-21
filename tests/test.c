@@ -58,7 +58,7 @@ double test_timeout_multiplier  = 1.0;
 static char *test_sql_cmd = NULL;
 int  test_session_timeout_ms = 6000;
 int          test_broker_version;
-static const char *test_broker_version_str = "0.9.0.0";
+static const char *test_broker_version_str = "2.4.0.0";
 int          test_flags = 0;
 int          test_neg_flags = TEST_F_KNOWN_ISSUE;
 /* run delete-test-topics.sh between each test (when concurrent_max = 1) */
@@ -119,6 +119,7 @@ _TEST_DECL(0012_produce_consume);
 _TEST_DECL(0013_null_msgs);
 _TEST_DECL(0014_reconsume_191);
 _TEST_DECL(0015_offsets_seek);
+_TEST_DECL(0016_client_swname);
 _TEST_DECL(0017_compression);
 _TEST_DECL(0018_cgrp_term);
 _TEST_DECL(0019_list_groups);
@@ -210,6 +211,7 @@ _TEST_DECL(0103_transactions);
 _TEST_DECL(0104_fetch_from_follower_mock);
 _TEST_DECL(0105_transactions_mock);
 _TEST_DECL(0106_cgrp_sess_timeout);
+_TEST_DECL(0110_batch_size);
 
 /* Manual tests */
 _TEST_DECL(8000_idle);
@@ -263,6 +265,7 @@ struct test tests[] = {
         _TEST(0013_null_msgs, 0),
         _TEST(0014_reconsume_191, 0),
         _TEST(0015_offsets_seek, 0),
+        _TEST(0016_client_swname, 0),
         _TEST(0017_compression, 0),
         _TEST(0018_cgrp_term, 0, TEST_BRKVER(0,9,0,0)),
         _TEST(0019_list_groups, 0, TEST_BRKVER(0,9,0,0)),
@@ -380,14 +383,15 @@ struct test tests[] = {
         _TEST(0099_commit_metadata, 0),
         _TEST(0100_thread_interceptors, TEST_F_LOCAL),
         _TEST(0101_fetch_from_follower, 0, TEST_BRKVER(2,4,0,0)),
-        _TEST(0102_static_group_rebalance, TEST_F_KNOWN_ISSUE,
+        _TEST(0102_static_group_rebalance, 0,
               TEST_BRKVER(2,3,0,0)),
         _TEST(0103_transactions_local, TEST_F_LOCAL),
         _TEST(0103_transactions, 0, TEST_BRKVER(0, 11, 0, 0)),
         _TEST(0104_fetch_from_follower_mock, TEST_F_LOCAL,
               TEST_BRKVER(2,4,0,0)),
-        _TEST(0105_transactions_mock, TEST_F_LOCAL),
-        _TEST(0106_cgrp_sess_timeout, TEST_F_LOCAL),
+        _TEST(0105_transactions_mock, TEST_F_LOCAL, TEST_BRKVER(0,11,0,0)),
+        _TEST(0106_cgrp_sess_timeout, TEST_F_LOCAL, TEST_BRKVER(0,11,0,0)),
+        _TEST(0110_batch_size, 0),
 
         /* Manual tests */
         _TEST(8000_idle, TEST_F_MANUAL),
@@ -1142,6 +1146,7 @@ static void run_tests (int argc, char **argv) {
                 char testnum[128];
                 char *t;
                 const char *skip_reason = NULL;
+                rd_bool_t skip_silent = rd_false;
 		char tmp[128];
 
                 if (!test->mainfunc)
@@ -1153,9 +1158,10 @@ static void run_tests (int argc, char **argv) {
                 if ((t = strchr(testnum, '_')))
                         *t = '\0';
 
-                if ((test_flags && (test_flags & test->flags) != test_flags))
+                if ((test_flags && (test_flags & test->flags) != test_flags)) {
                         skip_reason = "filtered due to test flags";
-		if ((test_neg_flags & ~test_flags) & test->flags)
+                        skip_silent = rd_true;
+                } if ((test_neg_flags & ~test_flags) & test->flags)
 			skip_reason = "Filtered due to negative test flags";
 		if (test_broker_version &&
 		    (test->minver > test_broker_version ||
@@ -1170,21 +1176,31 @@ static void run_tests (int argc, char **argv) {
 			skip_reason = tmp;
 		}
 
-                if (tests_to_run && !strstr(tests_to_run, testnum))
+                if (tests_to_run && !strstr(tests_to_run, testnum)) {
                         skip_reason = "not included in TESTS list";
-                else if (!tests_to_run && (test->flags & TEST_F_MANUAL))
+                        skip_silent = rd_true;
+                } else if (!tests_to_run && (test->flags & TEST_F_MANUAL)) {
                         skip_reason = "manual test";
+                        skip_silent = rd_true;
+                }
 
                 if (!skip_reason) {
                         run_test(test, argc, argv);
                 } else {
-                        TEST_SAYL(3,
-                                  "================= Skipping test %s (%s)"
-                                  "================\n",
-                                  test->name, skip_reason);
-                        TEST_LOCK();
-                        test->state = TEST_SKIPPED;
-                        TEST_UNLOCK();
+                        if (skip_silent) {
+                                TEST_SAYL(3,
+                                          "================= Skipping test %s "
+                                          "(%s) ================\n",
+                                          test->name, skip_reason);
+                                TEST_LOCK();
+                                test->state = TEST_SKIPPED;
+                                TEST_UNLOCK();
+                        } else {
+                                test_curr = test;
+                                TEST_SKIP("%s\n", skip_reason);
+                                test_curr = &tests[0];
+                        }
+
                 }
         }
 
@@ -1489,8 +1505,10 @@ int main(int argc, char **argv) {
         test_git_version = test_getenv("RDKAFKA_GITVER", "HEAD");
 
         /* Are we running on CI? */
-        if (test_getenv("CI", NULL))
+        if (test_getenv("CI", NULL)) {
                 test_on_ci = 1;
+                test_concurrent_max = 3;
+        }
 
 	test_conf_init(NULL, NULL, 10);
 
@@ -5084,8 +5102,6 @@ test_CreatePartitions_simple (rd_kafka_t *rk,
         rd_kafka_AdminOptions_set_opaque(options, opaque);
 
         if (!useq) {
-                char errstr[512];
-
                 err = rd_kafka_AdminOptions_set_request_timeout(options,
                                                                 tmout,
                                                                 errstr,
