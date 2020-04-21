@@ -89,8 +89,8 @@ matrix:
       -DRDKAFKA_BUILD_TESTS:BOOL=ON \
       -DWITH_LIBDL:BOOL=OFF \
       -DWITH_PLUGINS:BOOL=OFF \
-      -DWITH_SASL:BOOL=OFF \
-      -DWITH_SSL:BOOL=OFF \
+      -DWITH_SASL:BOOL=ON \
+      -DWITH_SSL:BOOL=ON \
       -DWITH_ZLIB:BOOL=OFF \
       -DRDKAFKA_BUILD_STATIC:BOOL=OFF \
       -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS:BOOL=TRUE . 1>&2
@@ -130,7 +130,7 @@ before_install:
         export msys2+='& C:\\tools\\msys64\\msys2_shell.cmd -defterm -no-start'
         export mingw64="$msys2 -mingw64 -full-path -here -c "\"\$@"\" --"
         export msys2+=" -msys2 -c "\"\$@"\" --"
-        $msys2 pacman --sync --noconfirm --needed mingw-w64-x86_64-toolchain mingw-w64-x86_64-cmake
+        $msys2 pacman --sync --noconfirm --needed mingw-w64-x86_64-toolchain mingw-w64-x86_64-cmake mingw-w64-x86_64-openssl mingw-w64-x86_64-cyrus-sasl
         ## Install more MSYS2 packages from https://packages.msys2.org/base here
         taskkill //IM gpg-agent.exe //F  # https://travis-ci.community/t/4967
         export PATH=/C/tools/msys64/mingw64/bin:$PATH
