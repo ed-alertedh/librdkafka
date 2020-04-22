@@ -57,18 +57,7 @@ matrix:
     - ADDITIONAL_BUILDS="mingw"
     - SKIP_MAKE=y
    before_script:
-    - cmake -DCMAKE_TOOLCHAIN_FILE=./packaging/mingw-w64/mingw_toolchain.cmake \
-      -DMINGW_BUILD:BOOL=ON \
-      -DWITHOUT_WIN32_CONFIG:BOOL=ON \
-      -DRDKAFKA_BUILD_EXAMPLES:BOOL=ON \
-      -DRDKAFKA_BUILD_TESTS:BOOL=ON \
-      -DWITH_LIBDL:BOOL=OFF \
-      -DWITH_PLUGINS:BOOL=OFF \
-      -DWITH_SASL:BOOL=OFF \
-      -DWITH_SSL:BOOL=OFF \
-      -DWITH_ZLIB:BOOL=OFF \
-      -DRDKAFKA_BUILD_STATIC:BOOL=OFF \
-      -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS:BOOL=TRUE . 1>&2 && make 1>&2
+    -  ./packaging/mingw-w64/configure-build-linux-mingw.sh
    addons:
     apt:
      packages:
@@ -82,21 +71,7 @@ matrix:
    env:
     - SKIP_MAKE=y NO_ARTIFACTS=y
    before_script:
-    - $mingw64 cmake -DCMAKE_MAKE_PROGRAM=mingw32-make -G "MSYS Makefiles" -DCMAKE_TOOLCHAIN_FILE=./packaging/mingw-w64/msys2_mingw_toolchain.cmake \
-      -DMINGW_BUILD:BOOL=ON \
-      -DWITHOUT_WIN32_CONFIG:BOOL=ON \
-      -DRDKAFKA_BUILD_EXAMPLES:BOOL=ON \
-      -DRDKAFKA_BUILD_TESTS:BOOL=ON \
-      -DWITH_LIBDL:BOOL=OFF \
-      -DWITH_PLUGINS:BOOL=OFF \
-      -DWITH_SASL:BOOL=ON \
-      -DWITH_SSL:BOOL=ON \
-      -DWITH_ZLIB:BOOL=OFF \
-      -DRDKAFKA_BUILD_STATIC:BOOL=OFF \
-      -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS:BOOL=TRUE . 1>&2
-    - $mingw64 mingw32-make 1>&2
-    - cp /mingw64/bin/{libwinpthread-1.dll,libgcc_s_seh-1.dll,libstdc++-6.dll} src/librdkafka.dll src-cpp/librdkafka++.dll ./tests
-    - cd tests && ./test-runner.exe -l -Q -p1 && ./test-runner.exe -l -Q -p1 -P
+    - ./packaging/mingw-w64/configure-build-msys2-mingw.sh
  - name: "Linux GCC: +integration-tests +copyright-check +doc-check"
    os: linux
    dist: xenial
@@ -119,24 +94,7 @@ matrix:
     - ./packaging/tools/rdutcoverage.sh
 
 before_install:
-- |-
-    case $TRAVIS_OS_NAME in
-      windows)
-        [[ ! -f C:/tools/msys64/msys2_shell.cmd ]] && rm -rf C:/tools/msys64
-        choco uninstall -y mingw
-        choco upgrade --no-progress -y msys2
-        export msys2='cmd //C RefreshEnv.cmd '
-        export msys2+='& set MSYS=winsymlinks:nativestrict '
-        export msys2+='& C:\\tools\\msys64\\msys2_shell.cmd -defterm -no-start'
-        export mingw64="$msys2 -mingw64 -full-path -here -c "\"\$@"\" --"
-        export msys2+=" -msys2 -c "\"\$@"\" --"
-        $msys2 pacman --sync --noconfirm --needed mingw-w64-x86_64-toolchain mingw-w64-x86_64-cmake mingw-w64-x86_64-openssl mingw-w64-x86_64-cyrus-sasl
-        ## Install more MSYS2 packages from https://packages.msys2.org/base here
-        taskkill //IM gpg-agent.exe //F  # https://travis-ci.community/t/4967
-        export PATH=/C/tools/msys64/mingw64/bin:$PATH
-        export MAKE=mingw32-make  # so that Autotools can find it
-        ;;
-    esac
+    - source ./packaging/mingw-w64/travis-before-install.sh
 
 install:
  - ccache -s || echo "CCache is not available."
