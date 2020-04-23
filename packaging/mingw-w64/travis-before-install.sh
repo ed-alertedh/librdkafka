@@ -1,3 +1,5 @@
+# Slightly modified from:
+# https://docs.travis-ci.com/user/reference/windows/#how-do-i-use-msys2
 case $TRAVIS_OS_NAME in
     windows)
         [[ ! -f C:/tools/msys64/msys2_shell.cmd ]] && rm -rf C:/tools/msys64

@@ -1,4 +1,5 @@
 cmake -DCMAKE_TOOLCHAIN_FILE=./packaging/mingw-w64/mingw_toolchain.cmake \
+      -DCMAKE_INSTALL_PREFIX=$PWD/dest/ \
       -DMINGW_BUILD:BOOL=ON \
       -DWITHOUT_WIN32_CONFIG:BOOL=ON \
       -DRDKAFKA_BUILD_EXAMPLES:BOOL=ON \

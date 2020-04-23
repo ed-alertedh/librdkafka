@@ -54,10 +54,9 @@ matrix:
    compiler: x86_64-w64-mingw32-gcc
    dist: bionic
    env:
-    - ADDITIONAL_BUILDS="mingw"
     - SKIP_MAKE=y
    before_script:
-    -  ./packaging/mingw-w64/configure-build-linux-mingw.sh
+    - ./packaging/mingw-w64/configure-build-linux-mingw.sh
    addons:
     apt:
      packages:
@@ -69,7 +68,7 @@ matrix:
  - name: "Windows MinGW-w64"
    os: windows
    env:
-    - SKIP_MAKE=y NO_ARTIFACTS=y
+    - SKIP_MAKE=y
    before_script:
     - ./packaging/mingw-w64/configure-build-msys2-mingw.sh
  - name: "Linux GCC: +integration-tests +copyright-check +doc-check"
