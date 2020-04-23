@@ -1,3 +1,7 @@
+#!/bin/bash
+
+set -e
+
 cmake -DCMAKE_TOOLCHAIN_FILE=./packaging/mingw-w64/mingw_toolchain.cmake \
       -DCMAKE_INSTALL_PREFIX=$PWD/dest/ \
       -DMINGW_BUILD:BOOL=ON \
@@ -11,4 +15,5 @@ cmake -DCMAKE_TOOLCHAIN_FILE=./packaging/mingw-w64/mingw_toolchain.cmake \
       -DWITH_ZLIB:BOOL=OFF \
       -DRDKAFKA_BUILD_STATIC:BOOL=OFF \
       -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS:BOOL=TRUE .
-make && make install
+make
+make install

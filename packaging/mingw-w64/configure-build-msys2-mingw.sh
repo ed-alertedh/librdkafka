@@ -1,3 +1,7 @@
+#!/bin/bash
+
+set -e
+
 $mingw64 cmake -DCMAKE_MAKE_PROGRAM=mingw32-make -G "MinGW Makefiles" \
       -DCMAKE_INSTALL_PREFIX=$PWD/dest/ \
       -DMINGW_BUILD:BOOL=ON \
@@ -11,7 +15,9 @@ $mingw64 cmake -DCMAKE_MAKE_PROGRAM=mingw32-make -G "MinGW Makefiles" \
       -DWITH_ZLIB:BOOL=OFF \
       -DRDKAFKA_BUILD_STATIC:BOOL=OFF \
       -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS:BOOL=TRUE .
-$mingw64 mingw32-make && mingw32-make install
-cp src/librdkafka.dll src-cpp/librdkafka++.dll tests/test-runner.exe ./dest
+
+$mingw64 mingw32-make
+$mingw64 mingw32-make install
+
 export PATH="$PWD/dest/bin:/mingw64/bin/:${PATH}"
-./tests/test-runner.exe -l -Q -p1 && ./tests/test-runner.exe -l -Q -p1 -P
+./tests/test-runner.exe -l -Q -p1

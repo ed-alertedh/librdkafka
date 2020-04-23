@@ -1,3 +1,7 @@
+#!/bin/bash
+
+set -e
+
 # Slightly modified from:
 # https://docs.travis-ci.com/user/reference/windows/#how-do-i-use-msys2
 case $TRAVIS_OS_NAME in
