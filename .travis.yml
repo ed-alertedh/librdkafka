@@ -49,22 +49,6 @@ matrix:
    env: LINKAGE=static HOMEBREW_NO_AUTO_UPDATE=1
    before_script:
     - ./configure --install-deps --disable-lz4-ext --prefix="$PWD/dest" --enable-static --disable-syslog
- - name: "Linux MinGW-w64"
-   os: linux
-   compiler: x86_64-w64-mingw32-gcc
-   dist: bionic
-   env:
-    - SKIP_MAKE=y
-   before_script:
-    - ./packaging/mingw-w64/configure-build-linux-mingw.sh
-   addons:
-    apt:
-     packages:
-      - gcc-mingw-w64-base
-      - binutils-mingw-w64-x86-64
-      - gcc-mingw-w64-x86-64
-      - gcc-mingw-w64
-      - g++-mingw-w64-x86-64
  - name: "Windows MinGW-w64"
    os: windows
    env:
